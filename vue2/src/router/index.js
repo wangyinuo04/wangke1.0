@@ -9,7 +9,6 @@ import TeacherDashboard from '@/views/TeacherDashboard.vue'
 import StudentDashboard from '@/views/StudentDashboard.vue'
 
 // 2. 引入占位页面 (用于模拟未开发的功能)
-// 为了代码不报错，你需要创建这些文件，或者暂时注释掉 component 引用
 const Placeholder = { template: '<div style="padding:20px;"><h2>功能开发中...</h2><p>这是具体的功能页面</p></div>' }
 
 Vue.use(Router)
@@ -36,7 +35,17 @@ export default new Router({
       path: '/admin',
       component: AdminDashboard,
       children: [
-        { path: '', redirect: 'teacher-manage' },
+        { path: '', redirect: 'home' },
+        { 
+          path: 'home', 
+          component: () => import('@/views/admin/HomePage.vue').catch(() => Placeholder), 
+          meta: { title: '知识首页' } 
+        },
+        { 
+          path: 'profile', 
+          component: () => import('@/views/admin/AdminProfile.vue').catch(() => Placeholder), 
+          meta: { title: '管理员主页' } 
+        },
         { path: 'teacher-manage', component: () => import('@/views/admin/TeacherManage.vue').catch(() => Placeholder), meta: { title: '教师用户管理' } },
         { path: 'student-manage', component: () => import('@/views/admin/StudentManage.vue').catch(() => Placeholder), meta: { title: '学生用户管理' } },
         { path: 'base-course', component: () => import('@/views/admin/BaseCourse.vue').catch(() => Placeholder), meta: { title: '课程基础库' } },
@@ -48,7 +57,17 @@ export default new Router({
       path: '/teacher',
       component: TeacherDashboard,
       children: [
-        { path: '', redirect: 'my-courses' },
+        { path: '', redirect: 'home' },
+        { 
+          path: 'home', 
+          component: () => import('@/views/teacher/TeacherHomePage.vue').catch(() => Placeholder), 
+          meta: { title: '教师工作台' } 
+        },
+        { 
+          path: 'profile', 
+          component: () => import('@/views/teacher/TeacherProfile.vue').catch(() => Placeholder), 
+          meta: { title: '教师主页' } 
+        },
         { path: 'my-courses', component: () => import('@/views/teacher/MyCourses.vue').catch(() => Placeholder), meta: { title: '我的课程' } },
         { path: 'resources', component: () => import('@/views/teacher/ResourceManage.vue').catch(() => Placeholder), meta: { title: '教学资源' } },
         { path: 'homework', component: () => import('@/views/teacher/HomeworkManage.vue').catch(() => Placeholder), meta: { title: '作业管理' } },
@@ -61,7 +80,17 @@ export default new Router({
       path: '/student',
       component: StudentDashboard,
       children: [
-        { path: '', redirect: 'course-list' },
+        { path: '', redirect: 'home' }, // 默认重定向到首页
+        { 
+          path: 'home', 
+          component: () => import('@/views/student/StudentHomePage.vue').catch(() => Placeholder), 
+          meta: { title: '学习中心' } 
+        },
+        { 
+          path: 'profile', 
+          component: () => import('@/views/student/StudentProfile.vue').catch(() => Placeholder), 
+          meta: { title: '学生主页' } 
+        },
         { path: 'course-list', component: () => import('@/views/student/CourseList.vue').catch(() => Placeholder), meta: { title: '课程学习' } },
         { path: 'my-homework', component: () => import('@/views/student/MyHomework.vue').catch(() => Placeholder), meta: { title: '我的作业' } },
         { path: 'my-exam', component: () => import('@/views/student/MyExam.vue').catch(() => Placeholder), meta: { title: '在线测验' } },
