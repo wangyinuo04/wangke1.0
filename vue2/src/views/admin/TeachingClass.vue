@@ -56,18 +56,20 @@
                 </div>
               </div>
             </td>
-            <td class="action-col">
-              <button class="btn-text btn-edit" @click="openStudentModal(cls)" title="分配学生">
-                👥 管理学生
-              </button>
-              
-              <button class="btn-text btn-info" @click="openEditClassModal(cls)" title="修改设置">
-                设置
-              </button>
+            <td>
+              <div class="action-col">
+                <button class="btn-text btn-edit" @click="openStudentModal(cls)" title="分配学生">
+                  👥 管理学生
+                </button>
+                
+                <button class="btn-text btn-info" @click="openEditClassModal(cls)" title="修改设置">
+                  设置
+                </button>
 
-              <button class="btn-text btn-danger" @click="deleteClass(cls)" title="解散班级">
-                解散
-              </button>
+                <button class="btn-text btn-danger" @click="deleteClass(cls)" title="解散班级">
+                  解散
+                </button>
+              </div>
             </td>
           </tr>
           <tr v-if="teachingClasses.length === 0">
@@ -77,7 +79,6 @@
       </table>
     </div>
 
-    <!-- 开设/编辑教学班弹窗 -->
     <div class="modal-mask" v-if="showClassModal">
       <div class="modal-box">
         <div class="modal-header">
@@ -141,7 +142,6 @@
       </div>
     </div>
 
-    <!-- 学生管理弹窗 -->
     <div class="modal-mask" v-if="showStudentModal">
       <div class="modal-box wide-modal">
         <div class="modal-header">
@@ -192,7 +192,6 @@
               </div>
               <p class="hint">系统将自动查找该行政班级下的所有学生。</p>
               
-              <!-- 学生列表 -->
               <div v-if="searchedStudents.length > 0" class="search-results">
                 <div class="search-header">
                   <label class="checkbox-container">

@@ -46,14 +46,16 @@
             <td class="desc-col" :title="course.description">
               {{ course.description }}
             </td>
-            <td class="action-col">
-              <button class="btn-text btn-edit" @click="openEditModal(course)" title="修改课程信息">
-                编辑
-              </button>
-              
-              <button class="btn-text btn-danger" @click="deleteCourse(course)" title="删除课程档案">
-                删除
-              </button>
+            <td>
+              <div class="action-col">
+                <button class="btn-text btn-edit" @click="openEditModal(course)" title="修改课程信息">
+                  编辑
+                </button>
+                
+                <button class="btn-text btn-danger" @click="deleteCourse(course)" title="删除课程档案">
+                  删除
+                </button>
+              </div>
             </td>
           </tr>
           <tr v-if="filteredCourses.length === 0">

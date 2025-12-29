@@ -15,8 +15,7 @@
           >
           <button class="btn btn-search" @click="handleSearch">🔍 搜索</button>
         </div>
-        <!-- 移除了新增学生按钮 -->
-      </div>
+        </div>
     </div>
 
     <div class="table-card">
@@ -54,26 +53,28 @@
                 {{ student.accountStatus === '正常' ? '正常' : '禁用' }}
               </span>
             </td>
-            <td class="action-col">
-              <button class="btn-text btn-edit" @click="openEditModal(student)" title="修改档案">
-                编辑
-              </button>
-              
-              <button 
-                class="btn-text" 
-                :class="student.accountStatus === '正常' ? 'btn-warn' : 'btn-success'"
-                @click="toggleStatus(student)"
-              >
-                {{ student.accountStatus === '正常' ? '禁用' : '启用' }}
-              </button>
+            <td>
+              <div class="action-col">
+                <button class="btn-text btn-edit" @click="openEditModal(student)" title="修改档案">
+                  编辑
+                </button>
+                
+                <button 
+                  class="btn-text" 
+                  :class="student.accountStatus === '正常' ? 'btn-warn' : 'btn-success'"
+                  @click="toggleStatus(student)"
+                >
+                  {{ student.accountStatus === '正常' ? '禁用' : '启用' }}
+                </button>
 
-              <button class="btn-text btn-info" @click="resetPassword(student)" title="重置密码">
-                重置
-              </button>
+                <button class="btn-text btn-info" @click="resetPassword(student)" title="重置密码">
+                  重置
+                </button>
 
-              <button class="btn-text btn-danger" @click="deleteStudent(student)" title="删除账号">
-                删除
-              </button>
+                <button class="btn-text btn-danger" @click="deleteStudent(student)" title="删除账号">
+                  删除
+                </button>
+              </div>
             </td>
           </tr>
           <tr v-if="filteredStudents.length === 0">

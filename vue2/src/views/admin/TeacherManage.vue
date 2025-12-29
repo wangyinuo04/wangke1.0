@@ -54,26 +54,28 @@
                 {{ teacher.accountStatus === '正常' ? '正常' : '已禁用' }}
               </span>
             </td>
-            <td class="action-col">
-              <button class="btn-text btn-edit" @click="openEditModal(teacher)" title="编辑信息">
-                编辑
-              </button>
-              
-              <button 
-                class="btn-text" 
-                :class="teacher.accountStatus === '正常' ? 'btn-warn' : 'btn-success'"
-                @click="toggleStatus(teacher)"
-              >
-                {{ teacher.accountStatus === '正常' ? '禁用' : '启用' }}
-              </button>
+            <td>
+              <div class="action-col">
+                <button class="btn-text btn-edit" @click="openEditModal(teacher)" title="编辑信息">
+                  编辑
+                </button>
+                
+                <button 
+                  class="btn-text" 
+                  :class="teacher.accountStatus === '正常' ? 'btn-warn' : 'btn-success'"
+                  @click="toggleStatus(teacher)"
+                >
+                  {{ teacher.accountStatus === '正常' ? '禁用' : '启用' }}
+                </button>
 
-              <button class="btn-text btn-info" @click="resetPassword(teacher)" title="重置为默认密码">
-                重置
-              </button>
+                <button class="btn-text btn-info" @click="resetPassword(teacher)" title="重置为默认密码">
+                  重置
+                </button>
 
-              <button class="btn-text btn-danger" @click="deleteTeacher(teacher)" title="删除账号">
-                删除
-              </button>
+                <button class="btn-text btn-danger" @click="deleteTeacher(teacher)" title="删除账号">
+                  删除
+                </button>
+              </div>
             </td>
           </tr>
           <tr v-if="filteredTeachers.length === 0">
@@ -157,7 +159,7 @@ export default {
       teachers: [],
       loading: false,
       form: {
-        teacherId: '',  // 注意字段名修改
+        teacherId: '',
         name: '',
         gender: '男',
         department: '',
@@ -173,7 +175,7 @@ export default {
       const query = this.searchQuery.toLowerCase();
       return this.teachers.filter(t => 
         t.name.toLowerCase().includes(query) || 
-        t.teacherId.toLowerCase().includes(query)  // 修改这里
+        t.teacherId.toLowerCase().includes(query)
       );
     }
   },
@@ -188,7 +190,7 @@ export default {
         const response = await teacherApi.getTeacherList();
         if (response.success) {
           this.teachers = response.data;
-          console.log('加载的教师数据:', this.teachers); // 调试用
+          console.log('加载的教师数据:', this.teachers);
         } else {
           this.$message.error(response.message || '加载失败');
         }
@@ -225,7 +227,7 @@ export default {
       return 'badge-normal';
     },
 
-    // 状态颜色区分（新增方法）
+    // 状态颜色区分
     getStatusClass(status) {
       return status === '正常' ? 'status-active' : 'status-disabled';
     },
@@ -246,7 +248,6 @@ export default {
     
     openEditModal(teacher) {
       this.isEditMode = true;
-      // 确保字段名匹配
       this.form = { 
         teacherId: teacher.teacherId,
         name: teacher.name,
@@ -263,7 +264,7 @@ export default {
       this.showModal = false;
     },
     
-    // 保存教师（新增或编辑）
+    // 保存教师
     async saveTeacher() {
       // 验证必填字段
       if (!this.form.teacherId.trim()) {
@@ -281,23 +282,21 @@ export default {
 
       try {
         if (this.isEditMode) {
-          // 更新教师信息
           const response = await teacherApi.updateTeacher(this.form);
           if (response.success) {
             this.$message.success(response.message);
             this.closeModal();
-            this.loadTeachers(); // 重新加载数据
+            this.loadTeachers();
           } else {
             this.$message.error(response.message);
           }
         } else {
-          // 新增教师
           const response = await teacherApi.addTeacher(this.form);
           if (response.success) {
             this.$message.success(response.message);
             this.$message.info('初始密码已设置为：123456');
             this.closeModal();
-            this.loadTeachers(); // 重新加载数据
+            this.loadTeachers();
           } else {
             this.$message.error(response.message);
           }
@@ -310,10 +309,10 @@ export default {
 
     // 切换账号状态
     async toggleStatus(teacher) {
-      const action = teacher.accountStatus === '正常' ? '禁用' : '启用';  // 修改这里
+      const action = teacher.accountStatus === '正常' ? '禁用' : '启用';
       try {
         const confirm = await this.$confirm(
-          `确定要${action}该教师账号吗？\n${teacher.name} (${teacher.teacherId})`,  // 修改这里
+          `确定要${action}该教师账号吗？\n${teacher.name} (${teacher.teacherId})`,
           '提示',
           {
             confirmButtonText: '确定',
@@ -323,10 +322,10 @@ export default {
         ).catch(() => false);
         
         if (confirm) {
-          const response = await teacherApi.toggleTeacherStatus(teacher.teacherId);  // 修改这里
+          const response = await teacherApi.toggleTeacherStatus(teacher.teacherId);
           if (response.success) {
             this.$message.success(response.message);
-            this.loadTeachers(); // 重新加载数据
+            this.loadTeachers();
           } else {
             this.$message.error(response.message);
           }
@@ -351,7 +350,7 @@ export default {
         ).catch(() => false);
         
         if (confirm) {
-          const response = await teacherApi.resetTeacherPassword(teacher.teacherId);  // 修改这里
+          const response = await teacherApi.resetTeacherPassword(teacher.teacherId);
           if (response.success) {
             this.$message.success('密码重置成功，新密码为：123456');
           } else {
@@ -378,10 +377,10 @@ export default {
         ).catch(() => false);
         
         if (confirm) {
-          const response = await teacherApi.deleteTeacher(teacher.teacherId);  // 修改这里
+          const response = await teacherApi.deleteTeacher(teacher.teacherId);
           if (response.success) {
             this.$message.success(response.message);
-            this.loadTeachers(); // 重新加载数据
+            this.loadTeachers();
           } else {
             this.$message.error(response.message);
           }
@@ -435,7 +434,7 @@ export default {
 .status-active { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
 .status-disabled { background: #fff1f0; color: #f5222d; border: 1px solid #ffa39e; }
 
-/* 职称徽标 (新增) */
+/* 职称徽标 */
 .badge-title { padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 .badge-prof { background: #fff7e6; color: #fa8c16; border: 1px solid #ffd591; }
 .badge-assoc { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
