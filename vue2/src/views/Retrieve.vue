@@ -33,174 +33,214 @@
 
       <div class="form-section">
         <div class="login-card">
-          
-          <div v-if="currentView === 'login'" class="fade-in-animation">
-            <h2 class="form-title">用户登录</h2>
-            <p class="form-subtitle">欢迎回到在线课程管理系统</p>
+          <h2 class="form-title">找回密码</h2>
+          <p class="form-subtitle">验证身份以重置您的账户密码</p>
 
-            <div class="role-tabs">
-              <div class="role-tab" :class="{ active: loginForm.role === 'student' }" @click="switchRole('student')">学生</div>
-              <div class="role-tab" :class="{ active: loginForm.role === 'teacher' }" @click="switchRole('teacher')">教师</div>
-              <div class="role-tab" :class="{ active: loginForm.role === 'admin' }" @click="switchRole('admin')">管理员</div>
-            </div>
-
-            <form @submit.prevent="handleLogin">
-              <div class="input-group">
-                <label>{{ accountLabel }}</label>
-                <input type="text" v-model="loginForm.username" :placeholder="'请输入' + accountLabel" required>
-              </div>
-              <div class="input-group">
-                <label>密码</label>
-                <input type="password" v-model="loginForm.password" placeholder="请输入密码" required>
-              </div>
-              <div class="form-options">
-                <a class="forgot-link" @click.prevent="currentView = 'retrieve'">忘记密码？</a>
-              </div>
-              <button type="submit" class="submit-btn">立即登录</button>
-            </form>
-
-            <div class="register-footer" v-if="loginForm.role === 'student'">
-              还没有账号？ <span class="register-link" @click="goToRegister">免费注册</span>
-            </div>
+          <div class="role-tabs">
+            <div class="role-tab" :class="{ active: retrieveForm.role === 'student' }" @click="retrieveForm.role = 'student'">学生</div>
+            <div class="role-tab" :class="{ active: retrieveForm.role === 'teacher' }" @click="retrieveForm.role = 'teacher'">教师</div>
           </div>
 
-          <div v-else class="fade-in-animation">
-            <h2 class="form-title">找回密码</h2>
-            <p class="form-subtitle">验证身份以重置您的账户密码</p>
-
-            <div v-if="retrieveStep === 1">
-              <div class="input-group">
-                <label>账号 (教工号/学号)</label>
-                <input type="text" v-model="retrieveForm.id" placeholder="请输入您的ID">
-              </div>
-              <div class="input-group">
-                <label>预留手机号/邮箱</label>
-                <input type="text" v-model="retrieveForm.contact" placeholder="请输入注册时的联系方式">
-              </div>
-              <div class="input-group">
-                <label>验证码</label>
-                <div class="verify-row">
-                  <input type="text" v-model="retrieveForm.code" placeholder="6位验证码">
-                  <button class="send-btn" @click="sendCode" :disabled="timer > 0" :class="{ 'disabled': timer > 0 }">
-                    {{ timer > 0 ? `${timer}s` : '获取验证码' }}
-                  </button>
-                </div>
-              </div>
-              <button class="submit-btn" @click="verifyIdentity">下一步</button>
+          <div v-if="retrieveStep === 1">
+            <div class="input-group">
+              <label>{{ roleAccountLabel }}</label>
+              <input type="text" v-model="retrieveForm.id" :placeholder="'请输入' + roleAccountLabel" @blur="autoFillEmail">
             </div>
-
-            <div v-else>
-              <div class="success-tip"><span>✓</span> 身份验证通过</div>
-              <div class="input-group">
-                <label>设置新密码</label>
-                <input type="password" v-model="retrieveForm.newPass" placeholder="请输入新密码">
-              </div>
-              <div class="input-group">
-                <label>确认新密码</label>
-                <input type="password" v-model="retrieveForm.confirmPass" placeholder="请再次输入新密码">
-              </div>
-              <button class="submit-btn" @click="resetPassword">确认重置</button>
+            <div class="input-group">
+              <label>验证邮箱</label>
+              <input type="text" v-model="userEmail" placeholder="系统将自动匹配邮箱" disabled>
+              <div v-if="emailLoading" class="email-loading">正在获取邮箱...</div>
             </div>
-
-            <div class="back-link-wrapper">
-              <a class="back-link" @click.prevent="backToLogin">← 返回登录</a>
+            <div class="input-group">
+              <label>验证码</label>
+              <div class="verify-row">
+                <input type="text" v-model="retrieveForm.code" placeholder="6位验证码">
+                <button class="send-btn" @click="sendCode" :disabled="timer > 0 || !userEmail" :class="{ 'disabled': timer > 0 || !userEmail }">
+                  {{ timer > 0 ? `${timer}s` : '获取验证码' }}
+                </button>
+              </div>
             </div>
+            <button class="submit-btn" @click="verifyIdentity">下一步</button>
           </div>
 
+          <div v-else>
+            <div class="success-tip"><span>✓</span> 身份验证通过</div>
+            <div class="input-group">
+              <label>设置新密码</label>
+              <input type="password" v-model="retrieveForm.newPass" placeholder="请输入新密码">
+            </div>
+            <div class="input-group">
+              <label>确认新密码</label>
+              <input type="password" v-model="retrieveForm.confirmPass" placeholder="请再次输入新密码">
+            </div>
+            <button class="submit-btn" @click="resetPassword">确认重置</button>
+          </div>
+
+          <div class="back-link-wrapper">
+            <router-link class="back-link" to="/login">← 返回登录</router-link>
+          </div>
         </div>
       </div>
-
     </div>
   </div>
 </template>
 
 <script>
+import { sendCode, verifyCode, resetPassword, checkUser } from '@/api/retrieve'
+
 export default {
-  name: 'Login',
+  name: 'Retrieve',
   data() {
     return {
       titleText: '今课堂',
-      // 控制当前视图: 'login' 或 'retrieve'
-      currentView: 'login',
-      
-      // --- 登录数据 ---
-      loginForm: {
-        role: 'student',
-        username: '',
-        password: ''
-      },
-
-      // --- 找回密码数据 ---
-      retrieveStep: 1, // 1: 验证, 2: 重置
+      retrieveStep: 1,
       timer: 0,
+      userEmail: '',
+      emailLoading: false,
       retrieveForm: {
         id: '',
-        contact: '',
         code: '',
         newPass: '',
-        confirmPass: ''
+        confirmPass: '',
+        role: 'student'
       }
     }
   },
   computed: {
-    titleChars() { return this.titleText.split(''); },
-    accountLabel() {
-      const map = { admin: '管理员账号', teacher: '教工号', student: '学号' };
-      return map[this.loginForm.role];
+    titleChars() { 
+      return this.titleText.split(''); 
+    },
+    roleAccountLabel() {
+      const map = { 
+        teacher: '教工号', 
+        student: '学号' 
+      };
+      return map[this.retrieveForm.role];
     }
   },
   methods: {
-    // --- 通用方法 ---
-    switchRole(role) {
-      this.loginForm.role = role;
-      this.loginForm.username = '';
-      this.loginForm.password = '';
-    },
-    backToLogin() {
-      this.currentView = 'login';
-      this.retrieveStep = 1; // 重置找回密码步骤
-      this.retrieveForm = { id: '', contact: '', code: '', newPass: '', confirmPass: '' }; // 清空表单
-    },
-
-    // --- 登录逻辑 ---
-    handleLogin() {
-      if (!this.loginForm.username || !this.loginForm.password) {
-        return alert('请输入完整的账号和密码');
+    async autoFillEmail() {
+      if (!this.retrieveForm.id) {
+        this.userEmail = '';
+        return;
       }
-      const roleNameMap = { admin: '管理员', teacher: '教师', student: '学生' };
-      alert(`登录成功！\n欢迎 ${roleNameMap[this.loginForm.role]}: ${this.loginForm.username}`);
       
-      if (this.loginForm.role === 'admin') this.$router.push('/admin');
-      else if (this.loginForm.role === 'teacher') this.$router.push('/teacher');
-      else if (this.loginForm.role === 'student') this.$router.push('/student');
-    },
-
-    // --- 找回密码逻辑 ---
-    sendCode() {
-      if (!this.retrieveForm.id || !this.retrieveForm.contact) return alert('请先填写账号和联系方式');
-      this.timer = 60;
-      let interval = setInterval(() => {
-        this.timer--;
-        if (this.timer === 0) clearInterval(interval);
-      }, 1000);
-      alert('模拟验证码已发送: 123456');
-    },
-    verifyIdentity() {
-      if (this.retrieveForm.code === '123456') {
-        this.retrieveStep = 2; // 进入第二步
-      } else {
-        alert('验证码错误 (测试码: 123456)');
+      this.emailLoading = true;
+      try {
+        const response = await checkUser({
+          username: this.retrieveForm.id,
+          role: this.retrieveForm.role
+        });
+        
+        if (response.success) {
+          this.userEmail = response.email;
+        } else {
+          this.userEmail = '';
+          this.$message.warning(response.message);
+        }
+      } catch (error) {
+        console.error('获取邮箱失败:', error);
+        this.userEmail = '';
+        this.$message.error('获取邮箱失败');
+      } finally {
+        this.emailLoading = false;
       }
     },
-    resetPassword() {
-      if (!this.retrieveForm.newPass) return alert('请输入新密码');
-      if (this.retrieveForm.newPass !== this.retrieveForm.confirmPass) return alert('两次密码输入不一致');
+    
+    async sendCode() {
+      if (!this.retrieveForm.id) {
+        this.$message.error('请输入' + this.roleAccountLabel);
+        return;
+      }
       
-      alert('密码重置成功，请重新登录');
-      this.backToLogin(); // 自动返回登录界面
+      if (!this.userEmail) {
+        this.$message.error('请先输入' + this.roleAccountLabel + '获取邮箱');
+        return;
+      }
+      
+      try {
+        const response = await sendCode({
+          username: this.retrieveForm.id,
+          role: this.retrieveForm.role
+        });
+        
+        if (response.success) {
+          this.timer = 60;
+          let interval = setInterval(() => {
+            this.timer--;
+            if (this.timer === 0) {
+              clearInterval(interval);
+            }
+          }, 1000);
+          
+          this.$message.success(response.message);
+        } else {
+          this.$message.error(response.message);
+        }
+      } catch (error) {
+        console.error('发送验证码失败:', error);
+        this.$message.error('发送失败，请稍后重试');
+      }
     },
-    goToRegister() {
-      alert('跳转到学生注册页面 (此功能待开发)');
+    
+    async verifyIdentity() {
+      if (!this.retrieveForm.code) {
+        this.$message.error('请输入验证码');
+        return;
+      }
+      
+      try {
+        const response = await verifyCode({
+          username: this.retrieveForm.id,
+          role: this.retrieveForm.role,
+          code: this.retrieveForm.code
+        });
+        
+        if (response.success) {
+          this.retrieveStep = 2;
+          this.$message.success('身份验证通过');
+        } else {
+          this.$message.error(response.message);
+        }
+      } catch (error) {
+        console.error('验证失败:', error);
+        this.$message.error('验证失败，请稍后重试');
+      }
+    },
+    
+    async resetPassword() {
+      if (!this.retrieveForm.newPass || !this.retrieveForm.confirmPass) {
+        this.$message.error('请输入新密码');
+        return;
+      }
+      
+      if (this.retrieveForm.newPass !== this.retrieveForm.confirmPass) {
+        this.$message.error('两次密码输入不一致');
+        return;
+      }
+      
+      if (this.retrieveForm.newPass.length < 6) {
+        this.$message.error('密码长度至少6位');
+        return;
+      }
+      
+      try {
+        const response = await resetPassword({
+          username: this.retrieveForm.id,
+          newPassword: this.retrieveForm.newPass,
+          role: this.retrieveForm.role
+        });
+        
+        if (response.success) {
+          this.$message.success('密码重置成功，请重新登录');
+          this.$router.push('/login');
+        } else {
+          this.$message.error(response.message);
+        }
+      } catch (error) {
+        console.error('重置密码失败:', error);
+        this.$message.error('重置失败，请稍后重试');
+      }
     }
   }
 }

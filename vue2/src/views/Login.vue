@@ -54,9 +54,12 @@
                 <input type="password" v-model="loginForm.password" placeholder="请输入密码" required>
               </div>
               <div class="form-options">
-                <a class="forgot-link" @click.prevent="currentView = 'retrieve'">忘记密码？</a>
+                <!-- 改为路由链接 -->
+                <router-link class="forgot-link" to="/retrieve">忘记密码？</router-link>
               </div>
-              <button type="submit" class="submit-btn">立即登录</button>
+              <button type="submit" class="submit-btn" :disabled="loading">
+                {{ loading ? '登录中...' : '立即登录' }}
+              </button>
             </form>
 
             <div class="register-footer" v-if="loginForm.role === 'student'">
@@ -64,49 +67,7 @@
             </div>
           </div>
 
-          <div v-else-if="currentView === 'retrieve'" class="fade-in-animation">
-            <h2 class="form-title">找回密码</h2>
-            <p class="form-subtitle">验证身份以重置您的账户密码</p>
-
-            <div v-if="retrieveStep === 1">
-              <div class="input-group">
-                <label>账号 (教工号/学号)</label>
-                <input type="text" v-model="retrieveForm.id" placeholder="请输入您的ID">
-              </div>
-              <div class="input-group">
-                <label>预留手机号/邮箱</label>
-                <input type="text" v-model="retrieveForm.contact" placeholder="请输入注册时的联系方式">
-              </div>
-              <div class="input-group">
-                <label>验证码</label>
-                <div class="verify-row">
-                  <input type="text" v-model="retrieveForm.code" placeholder="6位验证码">
-                  <button class="send-btn" @click="sendCode" :disabled="timer > 0" :class="{ 'disabled': timer > 0 }">
-                    {{ timer > 0 ? `${timer}s` : '获取验证码' }}
-                  </button>
-                </div>
-              </div>
-              <button class="submit-btn" @click="verifyIdentity">下一步</button>
-            </div>
-
-            <div v-else>
-              <div class="success-tip"><span>✓</span> 身份验证通过</div>
-              <div class="input-group">
-                <label>设置新密码</label>
-                <input type="password" v-model="retrieveForm.newPass" placeholder="请输入新密码">
-              </div>
-              <div class="input-group">
-                <label>确认新密码</label>
-                <input type="password" v-model="retrieveForm.confirmPass" placeholder="请再次输入新密码">
-              </div>
-              <button class="submit-btn" @click="resetPassword">确认重置</button>
-            </div>
-
-            <div class="back-link-wrapper">
-              <a class="back-link" @click.prevent="backToLogin">← 返回登录</a>
-            </div>
-          </div>
-
+          <!-- 注册部分 -->
           <div v-else-if="currentView === 'register'" class="fade-in-animation register-view">
             <h2 class="form-title">学生注册</h2>
             <p class="form-subtitle">创建账号以开启学习之旅</p>
@@ -138,7 +99,7 @@
                 </div>
                 <div class="input-group compact half">
                   <label>行政班级</label>
-                  <input type="text" v-model="registerForm.class" placeholder="例: 软件2201" required>
+                  <input type="text" v-model="registerForm.className" placeholder="例: 软件2201" required>
                 </div>
               </div>
 
@@ -164,11 +125,13 @@
               </div>
             </div>
 
-            <button class="submit-btn" @click="handleRegister">立即注册</button>
+            <button class="submit-btn" @click="handleRegister" :disabled="registerLoading">
+              {{ registerLoading ? '注册中...' : '立即注册' }}
+            </button>
             
             <div class="back-link-wrapper">
               <span style="font-size:13px; color:#666;">已有账号？</span>
-              <a class="register-link" @click.prevent="backToLogin">去登录</a>
+              <a class="register-link" @click.prevent="backToLogin">登录</a>
             </div>
           </div>
 
@@ -180,29 +143,27 @@
 </template>
 
 <script>
+import { login, register } from '@/api/login'
+
 export default {
   name: 'Login',
   data() {
     return {
       titleText: '今课堂',
-      // currentView: 'login' | 'retrieve' | 'register'
       currentView: 'login',
+      loading: false,
+      registerLoading: false,
       
       // --- 登录数据 ---
       loginForm: { role: 'student', username: '', password: '' },
 
-      // --- 找回密码数据 ---
-      retrieveStep: 1,
-      timer: 0,
-      retrieveForm: { id: '', contact: '', code: '', newPass: '', confirmPass: '' },
-
-      // --- 注册数据 (新增) ---
+      // --- 注册数据 ---
       registerForm: {
         studentId: '',
         name: '',
         gender: '男',
         department: '',
-        class: '',
+        className: '',
         phone: '',
         email: '',
         password: '',
@@ -218,70 +179,141 @@ export default {
     }
   },
   methods: {
-    // --- 通用 ---
     switchRole(role) {
       this.loginForm.role = role;
       this.loginForm.username = '';
       this.loginForm.password = '';
     },
+    
     backToLogin() {
       this.currentView = 'login';
-      this.retrieveStep = 1;
       this.clearForms();
     },
+    
     clearForms() {
-      // 清空表单数据
-      this.retrieveForm = { id: '', contact: '', code: '', newPass: '', confirmPass: '' };
-      this.registerForm = { studentId: '', name: '', gender: '男', department: '', class: '', phone: '', email: '', password: '', confirmPassword: '' };
+      this.registerForm = { 
+        studentId: '', 
+        name: '', 
+        gender: '男', 
+        department: '', 
+        className: '', 
+        phone: '', 
+        email: '', 
+        password: '', 
+        confirmPassword: '' 
+      };
     },
 
     // --- 登录 ---
-    handleLogin() {
-      if (!this.loginForm.username || !this.loginForm.password) return alert('请输入完整的账号和密码');
-      const roleNameMap = { admin: '管理员', teacher: '教师', student: '学生' };
-      alert(`登录成功！\n欢迎 ${roleNameMap[this.loginForm.role]}: ${this.loginForm.username}`);
+    async handleLogin() {
+      if (!this.loginForm.username || !this.loginForm.password) {
+        this.$message.error('请输入完整的账号和密码');
+        return;
+      }
       
-      if (this.loginForm.role === 'admin') this.$router.push('/admin');
-      else if (this.loginForm.role === 'teacher') this.$router.push('/teacher');
-      else if (this.loginForm.role === 'student') this.$router.push('/student');
+      this.loading = true;
+      
+      try {
+        const response = await login(this.loginForm);
+        
+        if (response.success) {
+          this.$message.success(response.message);
+          
+          // 保存用户信息到localStorage
+          const userInfo = {
+            role: this.loginForm.role,
+            id: this.loginForm.username,
+            ...response.userInfo
+          };
+          localStorage.setItem('userInfo', JSON.stringify(userInfo));
+          
+          // 根据角色跳转
+          if (this.loginForm.role === 'admin') {
+            this.$router.push('/admin');
+          } else if (this.loginForm.role === 'teacher') {
+            this.$router.push('/teacher');
+          } else if (this.loginForm.role === 'student') {
+            this.$router.push('/student');
+          }
+        } else {
+          this.$message.error(response.message);
+        }
+      } catch (error) {
+        console.error('登录失败:', error);
+        this.$message.error('登录失败，请稍后重试');
+      } finally {
+        this.loading = false;
+      }
     },
 
-    // --- 找回密码 ---
-    sendCode() {
-      if (!this.retrieveForm.id || !this.retrieveForm.contact) return alert('请先填写账号和联系方式');
-      this.timer = 60;
-      let interval = setInterval(() => {
-        this.timer--;
-        if (this.timer === 0) clearInterval(interval);
-      }, 1000);
-      alert('模拟验证码已发送: 123456');
-    },
-    verifyIdentity() {
-      if (this.retrieveForm.code === '123456') this.retrieveStep = 2;
-      else alert('验证码错误 (测试码: 123456)');
-    },
-    resetPassword() {
-      if (this.retrieveForm.newPass !== this.retrieveForm.confirmPass) return alert('两次密码输入不一致');
-      alert('密码重置成功，请重新登录');
-      this.backToLogin();
-    },
-
-    // --- 注册 (新增) ---
-    handleRegister() {
-      // 1. 简单的必填校验
+    // --- 注册 ---
+    async handleRegister() {
       const f = this.registerForm;
-      if (!f.studentId || !f.name || !f.department || !f.class || !f.phone || !f.email || !f.password) {
-        return alert('请填写完整的注册信息');
-      }
-      // 2. 密码一致校验
-      if (f.password !== f.confirmPassword) {
-        return alert('两次输入的密码不一致');
+      
+      // 验证必填字段
+      if (!f.studentId || !f.name || !f.department || !f.className || 
+          !f.phone || !f.email || !f.password || !f.confirmPassword) {
+        this.$message.error('请填写完整的注册信息');
+        return;
       }
       
-      // 3. 模拟提交后台
-      console.log('注册提交的数据:', this.registerForm);
-      alert('注册成功！请使用新账号登录。');
-      this.backToLogin();
+      // 验证手机号格式
+      const phoneRegex = /^1[3-9]\d{9}$/;
+      if (!phoneRegex.test(f.phone)) {
+        this.$message.error('请输入正确的手机号');
+        return;
+      }
+      
+      // 验证邮箱格式
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(f.email)) {
+        this.$message.error('请输入正确的邮箱地址');
+        return;
+      }
+      
+      // 验证密码一致
+      if (f.password !== f.confirmPassword) {
+        this.$message.error('两次输入的密码不一致');
+        return;
+      }
+      
+      // 密码强度验证（至少6位）
+      if (f.password.length < 6) {
+        this.$message.error('密码长度至少6位');
+        return;
+      }
+      
+      this.registerLoading = true;
+      
+      try {
+        const registerData = {
+          studentId: f.studentId,
+          name: f.name,
+          gender: f.gender,
+          department: f.department,
+          className: f.className,
+          phone: f.phone,
+          email: f.email,
+          loginPassword: f.password,
+          enrollmentYear: new Date().getFullYear(),
+          major: f.department,
+          accountStatus: '正常'
+        };
+        
+        const response = await register(registerData);
+        
+        if (response.success) {
+          this.$message.success(response.message);
+          this.backToLogin();
+        } else {
+          this.$message.error(response.message);
+        }
+      } catch (error) {
+        console.error('注册失败:', error);
+        this.$message.error('注册失败，请稍后重试');
+      } finally {
+        this.registerLoading = false;
+      }
     }
   }
 }
@@ -324,7 +356,7 @@ export default {
 .login-card {
   width: 400px; background: #ffffff; border-radius: 20px; padding: 40px 50px;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column;
-  transition: all 0.4s ease; /* 增加宽度的平滑过渡 */
+  transition: all 0.4s ease;
   min-height: 480px;
 }
 /* 注册模式下卡片变宽 */
@@ -349,23 +381,26 @@ export default {
   font-size: 14px; background: #f9f9f9; transition: all 0.3s; box-sizing: border-box;
 }
 .input-group input:focus, .input-group select:focus { border-color: #1890ff; background: #fff; outline: none; box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.1); }
+.input-group select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 15px center; padding-right: 40px; }
 
-/* --- 注册表单专用样式 --- */
+/* 注册表单专用样式 */
 .register-view { display: flex; flex-direction: column; height: 100%; }
 .scroll-container {
-  overflow-y: auto; /* 内容过多时允许滚动 */
-  max-height: 400px; /* 限制最大高度 */
-  padding-right: 5px; /* 防止滚动条遮挡 */
+  overflow-y: auto;
+  max-height: 400px;
+  padding-right: 5px;
+  margin-bottom: 15px;
 }
 /* 自定义滚动条 */
 .scroll-container::-webkit-scrollbar { width: 4px; }
 .scroll-container::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
 
 .form-row { display: flex; gap: 15px; margin-bottom: 0; }
-.input-group.compact { margin-bottom: 15px; } /* 注册时减少间距 */
-.input-group.half { flex: 1; } /* 半宽输入框 */
+.input-group.compact { margin-bottom: 15px; }
+.input-group.half { flex: 1; }
 .input-group.compact label { font-size: 12px; margin-bottom: 5px; }
-.input-group.compact input, .input-group.compact select { padding: 10px 12px; font-size: 13px; } /* 注册时字体稍小 */
+.input-group.compact input, .input-group.compact select { padding: 10px 12px; font-size: 13px; }
+.input-group.compact select { padding-right: 35px; background-position: right 12px center; }
 
 /* Buttons & Links */
 .form-options { display: flex; justify-content: flex-end; margin-bottom: 25px; }
@@ -374,9 +409,10 @@ export default {
 .submit-btn {
   width: 100%; padding: 15px; background: #1890ff; color: white; border: none;
   border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 5px 15px rgba(24, 144, 255, 0.3); margin-top: 10px;
+  transition: all 0.3s; box-shadow: 0 5px 15px rgba(24, 144, 255, 0.3); margin-top: 10px;
 }
 .submit-btn:hover { background: #096dd9; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(24, 144, 255, 0.4); }
+.submit-btn:disabled { background: #c0c0c0; cursor: not-allowed; transform: none; box-shadow: none; }
 .back-link-wrapper { margin-top: 20px; text-align: center; }
 .back-link { font-size: 13px; color: #666; cursor: pointer; text-decoration: none; }
 .back-link:hover { color: #1890ff; }
@@ -384,15 +420,19 @@ export default {
 .register-link { color: #1890ff; font-weight: bold; cursor: pointer; margin-left: 5px; }
 .register-link:hover { text-decoration: underline; }
 .verify-row { display: flex; gap: 10px; } .verify-row input { flex: 1; }
-.send-btn { padding: 0 12px; background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; border-radius: 10px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.send-btn { padding: 0 12px; background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; border-radius: 10px; cursor: pointer; font-size: 13px; white-space: nowrap; height: 44px; }
 .send-btn:hover { background: #1890ff; color: white; border-color: #1890ff; }
 .send-btn.disabled { background: #f5f5f5; color: #ccc; border-color: #eee; cursor: not-allowed; }
 .success-tip { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-size: 13px; }
+.success-tip span { display: inline-block; margin-right: 5px; }
 
 /* 响应式 */
 @media (max-width: 900px) {
-  .content-container { flex-direction: column; justify-content: center; }
+  .content-container { flex-direction: column; justify-content: center; padding: 0 20px; }
   .brand-section { display: none; }
-  .login-card { width: 100% !important; max-width: 350px; }
+  .login-card { width: 100% !important; max-width: 350px; padding: 30px; }
+  .login-card.wide-card { width: 100% !important; max-width: 380px; }
+  .brand-title { font-size: 56px; letter-spacing: 6px; }
+  .brand-slogan { font-size: 22px; letter-spacing: 3px; }
 }
 </style>

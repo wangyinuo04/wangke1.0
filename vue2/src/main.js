@@ -1,13 +1,14 @@
 import Vue from 'vue'
+import ElementUI from 'element-ui'
+import 'element-ui/lib/theme-chalk/index.css'
 import App from './App.vue'
 import router from './router'
-import ElementUI from 'element-ui'  // 引入完整 ElementUI
-import 'element-ui/lib/theme-chalk/index.css'  // 引入完整样式
+import store from './store'
 
-Vue.use(ElementUI)  // 全局使用
-Vue.config.productionTip = false
+Vue.use(ElementUI)
 
 new Vue({
   router,
+  store,  // 添加这行
   render: h => h(App)
 }).$mount('#app')

@@ -91,6 +91,65 @@
   </div>
 </template>
 
+<script>
+export default {
+  name: 'StudentDashboard',
+  data() {
+    return {
+      studentId: 'S202503',  // 从登录信息获取
+      showInviteInput: false,
+      inviteCode: ''
+    }
+  },
+  methods: {
+    goToProfile() {
+      this.$router.push('/student/profile').catch(err => {
+        if (err.name !== 'NavigationDuplicated') {
+          console.error('导航错误:', err);
+        }
+      });
+    },
+    logout() {
+      // 清除登录信息
+      localStorage.removeItem('userInfo');
+      this.$router.push('/login');
+    },
+    handleMessageClick() {
+      // 处理消息点击
+      this.$message.info('查看消息');
+    },
+    handleNotificationClick() {
+      // 处理通知点击
+      this.$message.info('查看通知');
+    },
+    joinClass() {
+      if (!this.inviteCode) {
+        this.$message.warning('请输入邀请码');
+        return;
+      }
+      // 调用加入课程的API
+      this.$message.success(`尝试加入课程，邀请码: ${this.inviteCode}`);
+      this.showInviteInput = false;
+      this.inviteCode = '';
+    },
+    handleInviteInputBlur() {
+      // 延迟隐藏输入框，避免点击按钮时立即隐藏
+      setTimeout(() => {
+        this.showInviteInput = false;
+        this.inviteCode = '';
+      }, 200);
+    }
+  },
+  mounted() {
+    // 从localStorage获取学生信息
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.studentId) {
+      this.studentId = userInfo.studentId;
+    }
+  }
+}
+</script>
+
 <style scoped>
 /* 通用布局样式 */
 .dashboard-layout {
