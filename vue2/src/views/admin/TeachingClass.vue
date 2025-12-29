@@ -23,6 +23,7 @@
       <table class="data-table">
         <thead>
           <tr>
+            <th width="120">教学班ID</th>
             <th width="120">开课学期</th>
             <th>教学班名称</th>
             <th>关联课程</th>
@@ -32,7 +33,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="cls in filteredClasses" :key="cls.id">
+          <tr v-for="cls in teachingClasses" :key="cls.classId">
+            <td><span class="code-tag">{{ cls.classId }}</span></td>
             <td><span class="term-tag">{{ cls.semester }}</span></td>
             <td class="name-col">{{ cls.className }}</td>
             <td>
@@ -44,11 +46,13 @@
             <td>{{ getTeacherName(cls.teacherId) }}</td>
             <td>
               <div class="capacity-box">
-                <span :class="{'text-red': cls.students.length >= cls.maxSize}">
-                  {{ cls.students.length }} / {{ cls.maxSize }}
+                <span :class="{'text-red': currentStudentCounts[cls.classId] >= cls.maxStudents}">
+                  {{ currentStudentCounts[cls.classId] || 0 }} / {{ cls.maxStudents }}
                 </span>
                 <div class="progress-bar">
-                  <div class="progress-fill" :style="{ width: (cls.students.length / cls.maxSize * 100) + '%' }"></div>
+                  <div class="progress-fill" :style="{ 
+                    width: Math.min((currentStudentCounts[cls.classId] || 0) / cls.maxStudents * 100, 100) + '%' 
+                  }"></div>
                 </div>
               </div>
             </td>
@@ -66,13 +70,14 @@
               </button>
             </td>
           </tr>
-          <tr v-if="filteredClasses.length === 0">
-            <td colspan="6" class="empty-state">暂无排课记录，请点击右上角开设新班级</td>
+          <tr v-if="teachingClasses.length === 0">
+            <td colspan="7" class="empty-state">暂无排课记录，请点击右上角开设新班级</td>
           </tr>
         </tbody>
       </table>
     </div>
 
+    <!-- 开设/编辑教学班弹窗 -->
     <div class="modal-mask" v-if="showClassModal">
       <div class="modal-box">
         <div class="modal-header">
@@ -86,8 +91,8 @@
                 <label>基础课程 <span class="required">*</span></label>
                 <select v-model="classForm.courseId" :disabled="isEditMode" required>
                   <option value="" disabled>请选择课程</option>
-                  <option v-for="c in mockBaseCourses" :key="c.id" :value="c.id">
-                    {{ c.name }} ({{ c.id }})
+                  <option v-for="c in courseList" :key="c.courseId" :value="c.courseId">
+                    {{ c.courseName }} ({{ c.courseId }})
                   </option>
                 </select>
               </div>
@@ -95,8 +100,8 @@
                 <label>授课教师 <span class="required">*</span></label>
                 <select v-model="classForm.teacherId" required>
                   <option value="" disabled>请选择教师</option>
-                  <option v-for="t in mockTeachers" :key="t.id" :value="t.id">
-                    {{ t.name }} ({{ t.id }})
+                  <option v-for="t in teacherList" :key="t.teacherId" :value="t.teacherId">
+                    {{ t.name }} ({{ t.teacherId }})
                   </option>
                 </select>
               </div>
@@ -108,12 +113,15 @@
                 <select v-model="classForm.semester" required>
                   <option>2025-2026-1</option>
                   <option>2025-2026-2</option>
+                  <option>2024-2025-1</option>
                   <option>2024-2025-2</option>
+                  <option>2023-2024-1</option>
+                  <option>2023-2024-2</option>
                 </select>
               </div>
               <div class="form-group">
                 <label>最大人数 <span class="required">*</span></label>
-                <input type="number" v-model.number="classForm.maxSize" min="1" max="200" required>
+                <input type="number" v-model.number="classForm.maxStudents" min="1" max="200" required>
               </div>
             </div>
 
@@ -124,13 +132,16 @@
 
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" @click="closeClassModal">取消</button>
-              <button type="submit" class="btn btn-primary">保存</button>
+              <button type="submit" class="btn btn-primary" :disabled="loading">
+                {{ loading ? '保存中...' : '保存' }}
+              </button>
             </div>
           </form>
         </div>
       </div>
     </div>
 
+    <!-- 学生管理弹窗 -->
     <div class="modal-mask" v-if="showStudentModal">
       <div class="modal-box wide-modal">
         <div class="modal-header">
@@ -143,8 +154,20 @@
             <div class="tool-card">
               <h4>单人分配学生</h4>
               <div class="input-row">
-                <input type="text" v-model="singleStudentId" placeholder="输入学生学号..." @keyup.enter="addSingleStudent">
-                <button class="btn btn-sm btn-primary" @click="addSingleStudent">添加</button>
+                <input 
+                  type="text" 
+                  v-model="singleStudentId" 
+                  placeholder="输入学生学号..." 
+                  @keyup.enter="addSingleStudent"
+                  :disabled="loading"
+                >
+                <button 
+                  class="btn btn-sm btn-primary" 
+                  @click="addSingleStudent"
+                  :disabled="loading || !singleStudentId"
+                >
+                  {{ loading ? '添加中...' : '添加' }}
+                </button>
               </div>
               <p class="hint">输入学号将该学生强制加入班级。</p>
             </div>
@@ -152,26 +175,106 @@
             <div class="tool-card">
               <h4>按行政班导入</h4>
               <div class="input-row">
-                <input type="text" v-model="targetAdminClass" placeholder="输入行政班级(如软件2201)..." @keyup.enter="batchImport">
-                <button class="btn btn-sm btn-success" @click="batchImport">批量导入</button>
+                <input 
+                  type="text" 
+                  v-model="targetAdminClass" 
+                  placeholder="输入行政班级(如软件2201)..." 
+                  @keyup.enter="searchStudentsByClass"
+                  :disabled="loading"
+                >
+                <button 
+                  class="btn btn-sm btn-success" 
+                  @click="searchStudentsByClass"
+                  :disabled="loading || !targetAdminClass"
+                >
+                  {{ loading ? '查询中...' : '查询' }}
+                </button>
               </div>
               <p class="hint">系统将自动查找该行政班级下的所有学生。</p>
+              
+              <!-- 学生列表 -->
+              <div v-if="searchedStudents.length > 0" class="search-results">
+                <div class="search-header">
+                  <label class="checkbox-container">
+                    <input 
+                      type="checkbox" 
+                      v-model="selectAllStudents" 
+                      @change="toggleSelectAllStudents"
+                    >
+                    <span class="checkmark"></span>
+                    全选
+                  </label>
+                  <span class="count">找到 {{ searchedStudents.length }} 名学生</span>
+                </div>
+                <div class="student-list-container">
+                  <div 
+                    v-for="student in searchedStudents" 
+                    :key="student.studentId" 
+                    class="student-item"
+                  >
+                    <label class="checkbox-container">
+                      <input 
+                        type="checkbox" 
+                        :value="student.studentId" 
+                        v-model="selectedStudentIds"
+                      >
+                      <span class="checkmark"></span>
+                    </label>
+                    <span class="student-name">{{ student.name }}</span>
+                    <span class="student-id">{{ student.studentId }}</span>
+                    <span class="student-class">{{ student.className }}</span>
+                  </div>
+                </div>
+                <div class="batch-actions">
+                  <button 
+                    class="btn btn-sm btn-primary" 
+                    @click="batchImportSelected"
+                    :disabled="loading || selectedStudentIds.length === 0"
+                  >
+                    {{ loading ? '导入中...' : `批量导入(${selectedStudentIds.length})` }}
+                  </button>
+                  <button 
+                    class="btn btn-sm btn-secondary" 
+                    @click="clearSearchResults"
+                    :disabled="loading"
+                  >
+                    清空
+                  </button>
+                </div>
+              </div>
             </div>
             
             <div class="stat-info">
-              当前人数: <strong>{{ currentClass.students.length }}</strong> / {{ currentClass.maxSize }}
+              当前人数: <strong>{{ currentClassStudents.length }}</strong> / {{ currentClass.maxStudents }}
+              <div v-if="currentAdmin" class="admin-info">
+                操作管理员: {{ currentAdmin }}
+              </div>
             </div>
           </div>
 
           <div class="panel-right">
-            <h4>已选课学生名单</h4>
+            <div class="panel-header">
+              <h4>已选课学生名单</h4>
+              <button 
+                class="btn btn-sm btn-refresh" 
+                @click="refreshClassStudents"
+                :disabled="loading"
+                title="刷新列表"
+              >
+                🔄
+              </button>
+            </div>
             <ul class="student-list">
-              <li v-for="(stuId, index) in currentClass.students" :key="stuId">
+              <li v-for="(student, index) in currentClassStudents" :key="student.studentId">
                 <span class="s-index">{{ index + 1 }}.</span>
-                <span class="s-info">{{ getStudentName(stuId) }} <span class="s-id">({{ stuId }})</span></span>
-                <span class="remove-icon" @click="removeStudent(stuId)" title="移除">×</span>
+                <span class="s-info">
+                  <span class="s-name">{{ student.name }}</span>
+                  <span class="s-id">({{ student.studentId }})</span>
+                  <span class="s-class">{{ student.className }}</span>
+                </span>
+                <span class="remove-icon" @click="removeStudent(student.studentId)" title="移除">×</span>
               </li>
-              <li v-if="currentClass.students.length === 0" class="empty-list">暂无学生</li>
+              <li v-if="currentClassStudents.length === 0" class="empty-list">暂无学生</li>
             </ul>
           </div>
         </div>
@@ -182,6 +285,21 @@
 </template>
 
 <script>
+import { getCourseList } from '@/api/course'
+import { getTeacherList } from '@/api/teacher'
+import { getStudentList } from '@/api/student'
+import { 
+  getTeachingClassList, 
+  addTeachingClass, 
+  updateTeachingClass, 
+  deleteTeachingClass,
+  enrollSingleStudent,
+  enrollBatchStudents,
+  removeStudentFromClass,
+  getClassStudents,
+  searchStudentsByAdminClass
+} from '@/api/teachingClass'
+
 export default {
   name: 'TeachingClass',
   data() {
@@ -190,184 +308,430 @@ export default {
       showClassModal: false,
       showStudentModal: false,
       isEditMode: false,
+      loading: false,
       
-      // --- 模拟基础数据 (实际应从后台获取) ---
-      mockBaseCourses: [
-        { id: 'CS101', name: '程序设计基础' },
-        { id: 'SE201', name: '软件工程导论' },
-        { id: 'MATH202', name: '离散数学' }
-      ],
-      mockTeachers: [
-        { id: 'T2023001', name: '王建国' },
-        { id: 'T2023002', name: '李晓梅' }
-      ],
-      // 模拟全校学生库 (用于1.5.2和1.5.3查找)
-      mockAllStudents: [
-        { id: 'S2023001', name: '张三', class: '软件2201' },
-        { id: 'S2023002', name: '李四', class: '计科2202' },
-        { id: 'S2023003', name: '王五', class: '软件2201' },
-        { id: 'S2023004', name: '赵六', class: '物联网2301' },
-        { id: 'S2023005', name: '钱七', class: '计科2202' },
-        { id: 'S2023006', name: '孙悟空', class: '软件2201' }
-      ],
-
-      // --- 教学班数据 ---
-      teachingClasses: [
-        { 
-          id: 1, 
-          courseId: 'CS101', 
-          teacherId: 'T2023001', 
-          semester: '2025-2026-1', 
-          className: '程序设计-软件1班', 
-          maxSize: 60,
-          students: ['S2023001', 'S2023003'] // 存储学号
-        },
-        { 
-          id: 2, 
-          courseId: 'SE201', 
-          teacherId: 'T2023002', 
-          semester: '2025-2026-1', 
-          className: '软件工程-卓越班', 
-          maxSize: 40,
-          students: [] 
-        }
-      ],
-
+      // 数据列表
+      courseList: [],
+      teacherList: [],
+      studentList: [],
+      teachingClasses: [],
+      
       // 表单模型
-      classForm: { id: null, courseId: '', teacherId: '', semester: '2025-2026-1', className: '', maxSize: 50 },
+      classForm: {
+        classId: '',
+        courseId: '',
+        teacherId: '',
+        semester: '2025-2026-1',
+        className: '',
+        maxStudents: 50
+      },
       
       // 学生管理相关
-      currentClass: null, // 当前正在操作的班级对象
+      currentClass: null,
+      currentClassStudents: [],
       singleStudentId: '',
-      targetAdminClass: ''
+      targetAdminClass: '',
+      searchedStudents: [],
+      selectedStudentIds: [],
+      selectAllStudents: false,
+      currentStudentCounts: {},
+      
+      // 当前管理员信息
+      currentAdmin: ''
     }
   },
-  computed: {
-    filteredClasses() {
-      if (!this.searchQuery) return this.teachingClasses;
-      const q = this.searchQuery.toLowerCase();
-      return this.teachingClasses.filter(c => c.className.toLowerCase().includes(q));
-    }
+  created() {
+    this.loadAllData()
+    this.getCurrentAdmin()
   },
   methods: {
-    handleSearch() { console.log('Searching...'); },
-    
-    // 辅助获取名称
-    getCourseName(id) {
-      const c = this.mockBaseCourses.find(x => x.id === id);
-      return c ? c.name : id;
-    },
-    getTeacherName(id) {
-      const t = this.mockTeachers.find(x => x.id === id);
-      return t ? t.name : id;
-    },
-    getStudentName(id) {
-      const s = this.mockAllStudents.find(x => x.id === id);
-      return s ? s.name : '未知学生';
-    },
-
-    // --- 1.5.1 开设/编辑班级 ---
-    openClassModal() {
-      this.isEditMode = false;
-      this.classForm = { id: Date.now(), courseId: '', teacherId: '', semester: '2025-2026-1', className: '', maxSize: 50 };
-      this.showClassModal = true;
-    },
-    openEditClassModal(cls) {
-      this.isEditMode = true;
-      this.classForm = JSON.parse(JSON.stringify(cls));
-      this.showClassModal = true;
-    },
-    closeClassModal() { this.showClassModal = false; },
-    
-    saveClass() {
-      if (this.isEditMode) {
-        const idx = this.teachingClasses.findIndex(c => c.id === this.classForm.id);
-        if (idx !== -1) {
-          // 保留原有的学生列表
-          this.classForm.students = this.teachingClasses[idx].students;
-          this.teachingClasses.splice(idx, 1, this.classForm);
+    // 获取当前管理员信息
+    getCurrentAdmin() {
+      const userInfoStr = localStorage.getItem('userInfo')
+      if (userInfoStr) {
+        try {
+          const userInfo = JSON.parse(userInfoStr)
+          if (userInfo.role === 'admin' && userInfo.account) {
+            this.currentAdmin = userInfo.account
+          }
+        } catch (e) {
+          console.error('解析用户信息失败:', e)
+          this.currentAdmin = 'admin001'
         }
       } else {
-        this.classForm.students = []; // 新班级学生为空
-        this.teachingClasses.push(this.classForm);
+        this.currentAdmin = 'admin001'
       }
-      this.closeClassModal();
-      alert(this.isEditMode ? '修改成功' : '开课成功');
     },
-    deleteClass(cls) {
-      if (confirm(`确定要解散班级 "${cls.className}" 吗？\n这将移除所有已选课学生的关联！`)) {
-        this.teachingClasses = this.teachingClasses.filter(c => c.id !== cls.id);
+
+    // 加载所有数据
+    async loadAllData() {
+      this.loading = true
+      try {
+        await Promise.all([
+          this.loadCourses(),
+          this.loadTeachers(),
+          this.loadTeachingClasses()
+        ])
+      } catch (error) {
+        console.error('加载数据失败:', error)
+      } finally {
+        this.loading = false
+      }
+    },
+
+    // 加载课程列表
+    async loadCourses() {
+      try {
+        const response = await getCourseList()
+        if (response.success) {
+          this.courseList = response.data
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('加载课程失败:', error)
+        this.$message.error('加载课程失败')
+      }
+    },
+
+    // 加载教师列表
+    async loadTeachers() {
+      try {
+        const response = await getTeacherList()
+        if (response.success) {
+          this.teacherList = response.data
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('加载教师失败:', error)
+        this.$message.error('加载教师失败')
+      }
+    },
+
+    // 加载教学班列表
+    async loadTeachingClasses() {
+      try {
+        const response = await getTeachingClassList(this.searchQuery)
+        if (response.success) {
+          this.teachingClasses = response.data
+          // 为每个教学班加载学生数量
+          this.loadStudentCounts()
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('加载教学班失败:', error)
+        this.$message.error('加载教学班失败')
+      }
+    },
+
+    // 加载各班级学生数量
+    async loadStudentCounts() {
+      for (const cls of this.teachingClasses) {
+        try {
+          const response = await getClassStudents(cls.classId)
+          if (response.success) {
+            this.$set(this.currentStudentCounts, cls.classId, response.data.length)
+          }
+        } catch (error) {
+          console.error(`加载班级${cls.classId}学生数量失败:`, error)
+          this.$set(this.currentStudentCounts, cls.classId, 0)
+        }
+      }
+    },
+
+    // 辅助方法：获取课程名称
+    getCourseName(courseId) {
+      const course = this.courseList.find(c => c.courseId === courseId)
+      return course ? course.courseName : courseId
+    },
+
+    // 辅助方法：获取教师名称
+    getTeacherName(teacherId) {
+      const teacher = this.teacherList.find(t => t.teacherId === teacherId)
+      return teacher ? teacher.name : teacherId
+    },
+
+    handleSearch() {
+      this.loadTeachingClasses()
+    },
+
+    // --- 1.5.1 开设/编辑教学班 ---
+    openClassModal() {
+      this.isEditMode = false
+      this.classForm = {
+        classId: '',
+        courseId: '',
+        teacherId: '',
+        semester: '2025-2026-1',
+        className: '',
+        maxStudents: 50
+      }
+      this.showClassModal = true
+    },
+
+    openEditClassModal(cls) {
+      this.isEditMode = true
+      this.classForm = {
+        classId: cls.classId,
+        courseId: cls.courseId,
+        teacherId: cls.teacherId,
+        semester: cls.semester,
+        className: cls.className,
+        maxStudents: cls.maxStudents
+      }
+      this.showClassModal = true
+    },
+
+    closeClassModal() {
+      this.showClassModal = false
+    },
+
+    async saveClass() {
+      if (this.loading) return
+      
+      this.loading = true
+      try {
+        if (this.isEditMode) {
+          // 更新教学班
+          const response = await updateTeachingClass(this.classForm)
+          if (response.success) {
+            this.$message.success('修改成功')
+            await this.loadTeachingClasses()
+            this.closeClassModal()
+          } else {
+            this.$message.error(response.message)
+          }
+        } else {
+          // 开设新教学班
+          const response = await addTeachingClass(this.classForm)
+          if (response.success) {
+            this.$message.success('开课成功')
+            await this.loadTeachingClasses()
+            this.closeClassModal()
+          } else {
+            this.$message.error(response.message)
+          }
+        }
+      } catch (error) {
+        console.error('保存教学班失败:', error)
+        this.$message.error('保存失败')
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async deleteClass(cls) {
+      if (!confirm(`确定要解散班级 "${cls.className}" 吗？\n这将移除所有已选课学生的关联！`)) {
+        return
+      }
+
+      this.loading = true
+      try {
+        const response = await deleteTeachingClass(cls.classId)
+        if (response.success) {
+          this.$message.success('解散成功')
+          await this.loadTeachingClasses()
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('解散班级失败:', error)
+        this.$message.error('解散失败')
+      } finally {
+        this.loading = false
       }
     },
 
     // --- 学生分配管理 ---
-    openStudentModal(cls) {
-      this.currentClass = cls; // 引用传递，直接修改会反应到列表中
-      this.singleStudentId = '';
-      this.targetAdminClass = '';
-      this.showStudentModal = true;
+    async openStudentModal(cls) {
+      this.currentClass = cls
+      this.singleStudentId = ''
+      this.targetAdminClass = ''
+      this.searchedStudents = []
+      this.selectedStudentIds = []
+      this.selectAllStudents = false
+      
+      // 加载该班级的学生列表
+      await this.loadClassStudents()
+      this.showStudentModal = true
     },
+
     closeStudentModal() {
-      this.showStudentModal = false;
-      this.currentClass = null;
+      this.showStudentModal = false
+      this.currentClass = null
+      this.currentClassStudents = []
+    },
+
+    // 加载班级学生列表
+    async loadClassStudents() {
+      if (!this.currentClass) return
+      
+      this.loading = true
+      try {
+        const response = await getClassStudents(this.currentClass.classId)
+        if (response.success) {
+          // 获取学生详细信息
+          const studentIds = response.data
+          if (studentIds.length > 0) {
+            const studentResponse = await getStudentList()
+            if (studentResponse.success) {
+              this.currentClassStudents = studentResponse.data.filter(student => 
+                studentIds.includes(student.studentId)
+              )
+            }
+          } else {
+            this.currentClassStudents = []
+          }
+          this.$set(this.currentStudentCounts, this.currentClass.classId, studentIds.length)
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('加载班级学生失败:', error)
+        this.$message.error('加载学生列表失败')
+      } finally {
+        this.loading = false
+      }
+    },
+
+    // 刷新班级学生列表
+    async refreshClassStudents() {
+      await this.loadClassStudents()
     },
 
     // 1.5.2 单人分配
-    addSingleStudent() {
-      if (!this.singleStudentId) return alert('请输入学号');
-      // 1. 检查是否存在
-      const student = this.mockAllStudents.find(s => s.id === this.singleStudentId);
-      if (!student) return alert('错误：找不到该学号的学生！');
+    async addSingleStudent() {
+      if (!this.singleStudentId || this.loading) return
       
-      // 2. 检查是否重复
-      if (this.currentClass.students.includes(student.id)) return alert('该学生已在班级中！');
-      
-      // 3. 检查容量
-      if (this.currentClass.students.length >= this.currentClass.maxSize) return alert('错误：班级人数已满！');
+      // 验证输入
+      if (!this.singleStudentId.trim()) {
+        this.$message.warning('请输入学号')
+        return
+      }
 
-      this.currentClass.students.push(student.id);
-      this.singleStudentId = ''; // 清空输入
-      // alert(`已添加: ${student.name}`);
-    },
-
-    // 1.5.3 批量导入
-    batchImport() {
-      if (!this.targetAdminClass) return alert('请输入行政班级名称');
-      
-      // 1. 查找该行政班的所有学生
-      const targets = this.mockAllStudents.filter(s => s.class === this.targetAdminClass);
-      
-      if (targets.length === 0) return alert(`未找到行政班级 "${this.targetAdminClass}" 的任何学生`);
-
-      let successCount = 0;
-      let fullFlag = false;
-
-      targets.forEach(s => {
-        if (fullFlag) return;
-        // 检查重复
-        if (!this.currentClass.students.includes(s.id)) {
-          // 检查容量
-          if (this.currentClass.students.length < this.currentClass.maxSize) {
-            this.currentClass.students.push(s.id);
-            successCount++;
-          } else {
-            fullFlag = true;
-          }
+      this.loading = true
+      try {
+        // 先检查学生是否存在
+        const studentResponse = await getStudentList(this.singleStudentId)
+        if (!studentResponse.success || studentResponse.data.length === 0) {
+          this.$message.error('找不到该学号的学生')
+          return
         }
-      });
 
-      if (fullFlag) {
-        alert(`导入中断：班级容量已满！\n成功导入 ${successCount} 人。`);
-      } else {
-        alert(`批量导入完成！\n共找到 ${targets.length} 人，成功加入 ${successCount} 人 (自动过滤已存在学生)。`);
+        const response = await enrollSingleStudent(this.currentClass.classId, this.singleStudentId)
+        if (response.success) {
+          this.$message.success('添加学生成功')
+          this.singleStudentId = ''
+          await this.loadClassStudents()
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('添加学生失败:', error)
+        this.$message.error('添加失败')
+      } finally {
+        this.loading = false
       }
-      this.targetAdminClass = '';
     },
 
-    removeStudent(stuId) {
-      if (confirm('确定将该学生移出班级吗？')) {
-        this.currentClass.students = this.currentClass.students.filter(id => id !== stuId);
+    // 搜索行政班级的学生
+    async searchStudentsByClass() {
+      if (!this.targetAdminClass || this.loading) return
+      
+      this.loading = true
+      try {
+        const response = await searchStudentsByAdminClass(this.targetAdminClass)
+        if (response.success) {
+          this.searchedStudents = response.data
+          // 过滤掉已经在班级中的学生
+          this.searchedStudents = this.searchedStudents.filter(student => 
+            !this.currentClassStudents.some(s => s.studentId === student.studentId)
+          )
+          
+          if (this.searchedStudents.length === 0) {
+            this.$message.warning(`未找到行政班级 "${this.targetAdminClass}" 的可用学生`)
+          } else {
+            this.$message.success(`找到 ${this.searchedStudents.length} 名学生`)
+            this.selectedStudentIds = []
+            this.selectAllStudents = false
+          }
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('搜索学生失败:', error)
+        this.$message.error('搜索失败')
+      } finally {
+        this.loading = false
       }
+    },
+
+    // 全选/取消全选学生
+    toggleSelectAllStudents() {
+      if (this.selectAllStudents) {
+        this.selectedStudentIds = this.searchedStudents.map(student => student.studentId)
+      } else {
+        this.selectedStudentIds = []
+      }
+    },
+
+    // 批量导入选中的学生
+    async batchImportSelected() {
+      if (this.selectedStudentIds.length === 0 || this.loading) return
+      
+      this.loading = true
+      try {
+        const response = await enrollBatchStudents(this.currentClass.classId, this.selectedStudentIds)
+        if (response.success) {
+          this.$message.success(response.message)
+          await this.loadClassStudents()
+          this.clearSearchResults()
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('批量导入失败:', error)
+        this.$message.error('批量导入失败')
+      } finally {
+        this.loading = false
+      }
+    },
+
+    // 清空搜索结果
+    clearSearchResults() {
+      this.searchedStudents = []
+      this.selectedStudentIds = []
+      this.selectAllStudents = false
+      this.targetAdminClass = ''
+    },
+
+    // 从班级中移除学生
+    async removeStudent(studentId) {
+      if (!confirm('确定将该学生移出班级吗？')) return
+      
+      this.loading = true
+      try {
+        const response = await removeStudentFromClass(this.currentClass.classId, studentId)
+        if (response.success) {
+          this.$message.success('移除学生成功')
+          await this.loadClassStudents()
+        } else {
+          this.$message.error(response.message)
+        }
+      } catch (error) {
+        console.error('移除学生失败:', error)
+        this.$message.error('移除失败')
+      } finally {
+        this.loading = false
+      }
+    }
+  },
+  watch: {
+    // 监听选中的学生变化，更新全选状态
+    selectedStudentIds(newVal) {
+      this.selectAllStudents = newVal.length === this.searchedStudents.length && this.searchedStudents.length > 0
     }
   }
 }
@@ -385,14 +749,19 @@ export default {
 .search-box { display: flex; }
 .search-box input { padding: 8px 12px; border: 1px solid #dcdfe6; border-right: none; border-radius: 4px 0 0 4px; outline: none; font-size: 14px; width: 200px; }
 .search-box input:focus { border-color: #1890ff; }
-.btn-search { border-radius: 0 4px 4px 0; background: #f5f7fa; color: #606266; border: 1px solid #dcdfe6; border-left: none; }
+.btn-search { border-radius: 0 4px 4px 0; background: #f5f7fa; color: #606266; border: 1px solid #dcdfe6; border-left: none; cursor: pointer; }
 .btn-search:hover { background: #e6f7ff; color: #1890ff; }
 .btn { padding: 8px 16px; border: none; cursor: pointer; font-size: 14px; border-radius: 4px; transition: all 0.3s; }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 .btn-primary { background: #1890ff; color: white; box-shadow: 0 2px 6px rgba(24, 144, 255, 0.3); }
-.btn-primary:hover { background: #40a9ff; }
+.btn-primary:hover:not(:disabled) { background: #40a9ff; }
+.btn-primary:disabled { background: #bae7ff; cursor: not-allowed; }
 .btn-success { background: #52c41a; color: white; }
+.btn-success:hover:not(:disabled) { background: #73d13d; }
+.btn-success:disabled { background: #d9f7be; cursor: not-allowed; }
 .btn-secondary { background: #fff; border: 1px solid #dcdfe6; color: #606266; }
+.btn-secondary:hover:not(:disabled) { background: #f5f5f5; }
+.btn-secondary:disabled { background: #fafafa; cursor: not-allowed; }
 
 /* 表格 */
 .table-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); overflow: hidden; }
@@ -402,6 +771,7 @@ export default {
 .data-table tr:hover { background-color: #f5f7fa; }
 
 /* 表格内元素 */
+.code-tag { background: #f6ffed; color: #389e0d; border: 1px solid #b7eb8f; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: monospace; }
 .term-tag { background: #f0f5ff; color: #2f54eb; border: 1px solid #adc6ff; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: monospace; }
 .name-col { font-weight: 500; color: #333; }
 .course-info { display: flex; flex-direction: column; font-size: 13px; }
@@ -416,20 +786,25 @@ export default {
 
 .action-col { display: flex; gap: 8px; }
 .btn-text { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0; }
+.btn-text:disabled { color: #ccc; cursor: not-allowed; }
 .btn-edit { color: #1890ff; }
+.btn-edit:hover:not(:disabled) { text-decoration: underline; }
 .btn-info { color: #909399; }
+.btn-info:hover:not(:disabled) { text-decoration: underline; }
 .btn-danger { color: #f5222d; }
+.btn-danger:hover:not(:disabled) { text-decoration: underline; }
 .empty-state { text-align: center; padding: 40px; color: #999; }
 
 /* 弹窗通用 */
 .modal-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center; }
 .modal-box { background: white; width: 550px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: modalFadeIn 0.3s ease; display: flex; flex-direction: column; max-height: 90vh; }
-.wide-modal { width: 800px; height: 600px; } /* 学生管理弹窗更宽更高 */
+.wide-modal { width: 900px; height: 700px; } /* 学生管理弹窗更宽更高 */
 @keyframes modalFadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 .modal-header { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
 .modal-header h3 { margin: 0; font-size: 16px; color: #333; }
 .close-btn { font-size: 20px; cursor: pointer; color: #999; }
-.modal-body { padding: 20px; overflow-y: auto; }
+.close-btn:hover { color: #666; }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
 
 /* 表单样式 */
 .form-row { display: flex; gap: 15px; }
@@ -437,27 +812,61 @@ export default {
 .form-group label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; color: #606266; }
 .required { color: #f56c6c; margin-left: 2px; }
 .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+.form-group input:disabled, .form-group select:disabled { background: #f5f5f5; cursor: not-allowed; }
 .modal-footer { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; }
 
 /* --- 学生管理弹窗专用样式 --- */
 .student-manage-body { display: flex; gap: 20px; height: 100%; padding: 0; }
-.panel-left { width: 320px; border-right: 1px solid #eee; padding: 20px; background: #f9fafc; }
-.panel-right { flex: 1; padding: 20px; overflow-y: auto; }
+.panel-left { width: 380px; border-right: 1px solid #eee; padding: 20px; background: #f9fafc; overflow-y: auto; }
+.panel-right { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+
+.panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.panel-header h4 { margin: 0; font-size: 14px; color: #333; border-left: 3px solid #1890ff; padding-left: 8px; }
+.btn-refresh { background: none; border: 1px solid #dcdfe6; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.btn-refresh:hover:not(:disabled) { background: #f5f5f5; }
+.btn-refresh:disabled { color: #ccc; cursor: not-allowed; }
 
 .tool-card { background: #fff; border: 1px solid #e4e7ed; border-radius: 4px; padding: 15px; margin-bottom: 15px; box-shadow: 0 1px 4px rgba(0,0,0,0.03); }
 .tool-card h4 { margin: 0 0 10px; font-size: 14px; color: #333; border-left: 3px solid #1890ff; padding-left: 8px; }
-.input-row { display: flex; gap: 5px; }
+.input-row { display: flex; gap: 5px; margin-bottom: 8px; }
 .input-row input { flex: 1; padding: 6px; border: 1px solid #dcdfe6; border-radius: 3px; font-size: 13px; }
+.input-row input:disabled { background: #f5f5f5; }
 .hint { font-size: 12px; color: #999; margin: 5px 0 0; }
-.stat-info { margin-top: 20px; text-align: center; font-size: 14px; color: #606266; }
 
-.student-list { list-style: none; padding: 0; margin: 0; }
-.student-list li { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s; }
+/* 搜索结果显示 */
+.search-results { margin-top: 15px; border: 1px solid #e8e8e8; border-radius: 4px; overflow: hidden; }
+.search-header { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #fafafa; border-bottom: 1px solid #e8e8e8; }
+.search-header .count { font-size: 12px; color: #666; }
+.student-list-container { max-height: 250px; overflow-y: auto; }
+.student-item { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; }
+.student-item:hover { background: #f5f7fa; }
+.student-name { flex: 1; font-size: 13px; font-weight: 500; }
+.student-id { width: 100px; font-size: 12px; color: #666; text-align: right; }
+.student-class { width: 80px; font-size: 12px; color: #999; text-align: right; }
+.batch-actions { padding: 10px; background: #fafafa; border-top: 1px solid #e8e8e8; display: flex; gap: 8px; justify-content: flex-end; }
+
+/* 复选框样式 */
+.checkbox-container { display: flex; align-items: center; cursor: pointer; font-size: 12px; }
+.checkbox-container input { position: absolute; opacity: 0; cursor: pointer; }
+.checkmark { width: 16px; height: 16px; margin-right: 8px; background-color: #fff; border: 1px solid #dcdfe6; border-radius: 3px; display: inline-block; position: relative; }
+.checkbox-container input:checked ~ .checkmark { background-color: #1890ff; border-color: #1890ff; }
+.checkmark:after { content: ""; position: absolute; display: none; left: 5px; top: 2px; width: 4px; height: 8px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.checkbox-container input:checked ~ .checkmark:after { display: block; }
+
+.stat-info { margin-top: 20px; padding: 15px; background: #fff; border: 1px solid #e8e8e8; border-radius: 4px; text-align: center; font-size: 14px; color: #606266; }
+.stat-info strong { color: #1890ff; font-size: 18px; }
+.admin-info { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e8e8e8; font-size: 12px; color: #52c41a; }
+
+/* 已选课学生列表 */
+.student-list { list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; }
+.student-list li { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s; }
 .student-list li:hover { background: #f5f7fa; }
 .s-index { width: 30px; color: #999; font-size: 12px; }
-.s-info { flex: 1; font-weight: 500; color: #333; }
-.s-id { color: #999; font-weight: normal; font-size: 13px; margin-left: 5px; }
+.s-info { flex: 1; display: flex; align-items: center; }
+.s-name { font-weight: 500; color: #333; margin-right: 8px; }
+.s-id { color: #999; font-weight: normal; font-size: 13px; margin-right: 12px; }
+.s-class { color: #666; font-size: 12px; background: #f0f0f0; padding: 1px 6px; border-radius: 3px; }
 .remove-icon { color: #ff4d4f; cursor: pointer; font-size: 18px; font-weight: bold; padding: 0 5px; }
 .remove-icon:hover { background: #fff1f0; border-radius: 4px; }
-.empty-list { color: #ccc; text-align: center; padding: 20px; font-style: italic; }
+.empty-list { color: #ccc; text-align: center; padding: 40px; font-style: italic; }
 </style>

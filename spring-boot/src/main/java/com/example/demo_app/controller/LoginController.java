@@ -36,6 +36,51 @@ public class LoginController {
         return loginService.register(student);
     }
 
+    /**
+     * 管理员修改密码接口
+     */
+    @PostMapping("/admin/change-password")
+    public Map<String, Object> changeAdminPassword(@RequestBody Map<String, String> params) {
+        System.out.println("收到管理员密码修改请求: " + params);
+
+        String account = params.get("account");
+        String oldPassword = params.get("oldPassword");
+        String newPassword = params.get("newPassword");
+
+        if (account == null || account.trim().isEmpty()) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("message", "账号不能为空");
+            return errorResult;
+        }
+
+        if (oldPassword == null || oldPassword.trim().isEmpty()) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("message", "旧密码不能为空");
+            return errorResult;
+        }
+
+        if (newPassword == null || newPassword.trim().isEmpty()) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("message", "新密码不能为空");
+            return errorResult;
+        }
+
+        if (newPassword.length() < 6) {
+            Map<String, Object> errorResult = new HashMap<>();
+            errorResult.put("success", false);
+            errorResult.put("message", "新密码长度不能少于6位");
+            return errorResult;
+        }
+
+        Map<String, Object> result = loginService.changeAdminPassword(account, oldPassword, newPassword);
+        System.out.println("管理员密码修改结果: " + result);
+
+        return result;
+    }
+
     @GetMapping("/test")
     public String test() {
         return "后端服务正常运行！";

@@ -33,14 +33,14 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="course in filteredCourses" :key="course.id">
-            <td class="code-col">{{ course.id }}</td>
-            <td class="name-col">{{ course.name }}</td>
-            <td class="credit-col">{{ course.credits }}</td>
-            <td>{{ course.department }}</td>
+          <tr v-for="course in filteredCourses" :key="course.courseId">
+            <td class="code-col">{{ course.courseId }}</td>
+            <td class="name-col">{{ course.courseName }}</td>
+            <td class="credit-col">{{ course.credit }}</td>
+            <td>{{ course.college }}</td>
             <td>
-              <span class="type-badge" :class="getTypeClass(course.type)">
-                {{ course.type }}
+              <span class="type-badge" :class="getTypeClass(course.courseType)">
+                {{ course.courseType }}
               </span>
             </td>
             <td class="desc-col" :title="course.description">
@@ -74,22 +74,22 @@
             <div class="form-row">
               <div class="form-group">
                 <label>课程代码 <span class="required">*</span></label>
-                <input type="text" v-model="form.id" :disabled="isEditMode" placeholder="唯一标识(如CS101)" required>
+                <input type="text" v-model="form.courseId" :disabled="isEditMode" placeholder="唯一标识(如CS101)" required>
               </div>
               <div class="form-group">
                 <label>课程名称 <span class="required">*</span></label>
-                <input type="text" v-model="form.name" placeholder="输入课程名称" required>
+                <input type="text" v-model="form.courseName" placeholder="输入课程名称" required>
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label>学分 <span class="required">*</span></label>
-                <input type="number" v-model="form.credits" min="0" step="0.5" placeholder="例: 4.0" required>
+                <input type="number" v-model="form.credit" min="0" step="0.5" placeholder="例: 4.0" required>
               </div>
               <div class="form-group">
                 <label>课程性质 <span class="required">*</span></label>
-                <select v-model="form.type" required>
+                <select v-model="form.courseType" required>
                   <option value="必修">必修</option>
                   <option value="选修">选修</option>
                   <option value="通识">通识</option>
@@ -99,7 +99,7 @@
 
             <div class="form-group">
               <label>所属学院 <span class="required">*</span></label>
-              <input type="text" v-model="form.department" placeholder="例: 计算机学院" required>
+              <input type="text" v-model="form.college" placeholder="例: 计算机学院" required>
             </div>
 
             <div class="form-group">
@@ -124,6 +124,8 @@
 </template>
 
 <script>
+import * as courseApi from '@/api/course'
+
 export default {
   name: 'BaseCourse',
   data() {
@@ -131,35 +133,67 @@ export default {
       searchQuery: '',
       showModal: false,
       isEditMode: false,
-      // 模拟课程数据
-      courses: [
-        { id: 'CS101', name: '程序设计基础', credits: 4, department: '计算机学院', type: '必修', description: '本课程介绍C语言编程基础，包括变量、控制结构、函数等。' },
-        { id: 'CS102', name: '数据结构', credits: 3.5, department: '计算机学院', type: '必修', description: '深入讲解线性表、树、图等核心数据结构及其算法实现。' },
-        { id: 'SE201', name: '软件工程导论', credits: 3, department: '软件学院', type: '必修', description: '系统介绍软件生命周期、开发模型、需求分析与设计模式。' },
-        { id: 'ART001', name: '西方美术史', credits: 2, department: '艺术学院', type: '通识', description: '赏析从古希腊到现代主义的西方绘画与雕塑艺术发展历程。' },
-        { id: 'MATH202', name: '离散数学', credits: 4, department: '数学学院', type: '必修', description: '涵盖集合论、逻辑、图论等计算机科学的数学基础。' },
-        { id: 'CS305', name: '人工智能', credits: 3, department: '计算机学院', type: '选修', description: '探索机器学习、神经网络及智能代理的基本原理与应用。' },
-      ],
-      // 表单对象
+      courses: [],
+      loading: false,
       form: {
-        id: '', name: '', credits: '', department: '', type: '必修', description: ''
+        courseId: '',
+        courseName: '',
+        credit: '',
+        college: '',
+        courseType: '必修',
+        description: ''
       }
     }
   },
   computed: {
-    // 搜索功能
     filteredCourses() {
       if (!this.searchQuery) return this.courses;
       const query = this.searchQuery.toLowerCase();
       return this.courses.filter(c => 
-        c.name.toLowerCase().includes(query) || 
-        c.id.toLowerCase().includes(query)
+        (c.courseName && c.courseName.toLowerCase().includes(query)) || 
+        (c.courseId && c.courseId.toLowerCase().includes(query))
       );
     }
   },
+  mounted() {
+    this.loadCourses();
+  },
   methods: {
-    handleSearch() {
-      console.log('Searching course:', this.searchQuery);
+    // 加载课程列表
+    async loadCourses() {
+      this.loading = true;
+      try {
+        const response = await courseApi.getCourseList();
+        if (response.success) {
+          this.courses = response.data;
+          console.log('加载的课程数据:', this.courses);
+        } else {
+          this.$message.error(response.message || '加载失败');
+        }
+      } catch (error) {
+        console.error('加载课程列表失败:', error);
+        this.$message.error('网络错误，请检查后端服务');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // 搜索课程
+    async handleSearch() {
+      this.loading = true;
+      try {
+        const response = await courseApi.getCourseList(this.searchQuery);
+        if (response.success) {
+          this.courses = response.data;
+        } else {
+          this.$message.error(response.message || '搜索失败');
+        }
+      } catch (error) {
+        console.error('搜索失败:', error);
+        this.$message.error('搜索失败');
+      } finally {
+        this.loading = false;
+      }
     },
     
     // 动态获取课程性质的样式类
@@ -170,45 +204,115 @@ export default {
       return 'badge-normal';
     },
 
-    // --- 弹窗逻辑 ---
+    // 打开新增模态框
     openAddModal() {
       this.isEditMode = false;
-      this.form = { id: '', name: '', credits: '', department: '', type: '必修', description: '' };
+      this.form = { 
+        courseId: '', 
+        courseName: '', 
+        credit: '', 
+        college: '', 
+        courseType: '必修', 
+        description: '' 
+      };
       this.showModal = true;
     },
+    
+    // 打开编辑模态框
     openEditModal(course) {
       this.isEditMode = true;
-      // 深拷贝，防止修改时表格实时变动
-      this.form = JSON.parse(JSON.stringify(course));
+      this.form = { 
+        courseId: course.courseId,
+        courseName: course.courseName,
+        credit: course.credit,
+        college: course.college,
+        courseType: course.courseType,
+        description: course.description
+      };
       this.showModal = true;
     },
+    
     closeModal() {
       this.showModal = false;
     },
-    saveCourse() {
-      if (this.isEditMode) {
-        // 更新逻辑 (1.4.2)
-        const index = this.courses.findIndex(c => c.id === this.form.id);
-        if (index !== -1) {
-          this.courses.splice(index, 1, { ...this.form }); // 替换数据
-          alert('课程档案更新成功！');
-        }
-      } else {
-        // 新增逻辑 (1.4.1)
-        if (this.courses.find(c => c.id === this.form.id)) {
-          return alert('错误：该课程代码已存在！');
-        }
-        this.courses.push({ ...this.form });
-        alert('基础课程新增成功！');
+    
+    // 保存课程
+    async saveCourse() {
+      // 验证必填字段
+      if (!this.form.courseId.trim()) {
+        this.$message.warning('请输入课程代码');
+        return;
       }
-      this.closeModal();
+      if (!this.form.courseName.trim()) {
+        this.$message.warning('请输入课程名称');
+        return;
+      }
+      if (!this.form.credit) {
+        this.$message.warning('请输入学分');
+        return;
+      }
+      if (!this.form.college.trim()) {
+        this.$message.warning('请输入所属学院');
+        return;
+      }
+      if (!this.form.courseType.trim()) {
+        this.$message.warning('请选择课程性质');
+        return;
+      }
+
+      try {
+        if (this.isEditMode) {
+          // 更新课程
+          const response = await courseApi.updateCourse(this.form);
+          if (response.success) {
+            this.$message.success(response.message);
+            this.closeModal();
+            this.loadCourses(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        } else {
+          // 新增课程
+          const response = await courseApi.addCourse(this.form);
+          if (response.success) {
+            this.$message.success(response.message);
+            this.closeModal();
+            this.loadCourses(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('保存失败:', error);
+        this.$message.error('操作失败，请检查网络连接');
+      }
     },
 
-    // --- 删除课程 (1.4.2) ---
-    deleteCourse(course) {
-      if (confirm(`【警告】确定要删除课程档案 "${course.name} (${course.id})" 吗？\n此操作可能会影响已排课的班级！`)) {
-        this.courses = this.courses.filter(c => c.id !== course.id);
-        alert('课程档案已删除。');
+    // 删除课程
+    async deleteCourse(course) {
+      try {
+        const confirm = await this.$confirm(
+          `【警告】确定要删除课程档案 "${course.courseName} (${course.courseId})" 吗？\n此操作可能会影响已排课的班级！`,
+          '提示',
+          {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        ).catch(() => false);
+        
+        if (confirm) {
+          const response = await courseApi.deleteCourse(course.courseId);
+          if (response.success) {
+            this.$message.success(response.message);
+            this.loadCourses(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('删除失败:', error);
+        this.$message.error('删除失败');
       }
     }
   }

@@ -83,7 +83,7 @@
         <div class="stat-card">
           <div class="stat-icon">👥</div>
           <div class="stat-data">
-            <div class="stat-value">128</div>
+            <div class="stat-value">{{ stats.teacherCount || 0 }}</div>
             <div class="stat-label">在职教师总数</div>
           </div>
         </div>
@@ -91,7 +91,7 @@
         <div class="stat-card">
           <div class="stat-icon">🎓</div>
           <div class="stat-data">
-            <div class="stat-value">3,562</div>
+            <div class="stat-value">{{ stats.studentCount || 0 }}</div>
             <div class="stat-label">在校学生总数</div>
           </div>
         </div>
@@ -99,7 +99,7 @@
         <div class="stat-card">
           <div class="stat-icon">📖</div>
           <div class="stat-data">
-            <div class="stat-value">480</div>
+            <div class="stat-value">{{ stats.courseCount || 0 }}</div>
             <div class="stat-label">基础课程门数</div>
           </div>
         </div>
@@ -107,7 +107,7 @@
         <div class="stat-card">
           <div class="stat-icon">🏫</div>
           <div class="stat-data">
-            <div class="stat-value">86</div>
+            <div class="stat-value">{{ stats.teachingClassCount || 0 }}</div>
             <div class="stat-label">本学期开设班级</div>
           </div>
         </div>
@@ -119,22 +119,73 @@
 </template>
 
 <script>
+import { getTeacherCount } from '@/api/teacher'
+import { getStudentCount } from '@/api/student'
+import { getCourseCount } from '@/api/course'
+import { getTeachingClassCount } from '@/api/teachingClass'
+
 export default {
   name: 'HomePage',
   data() {
     return {
-      currentDate: new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
+      currentDate: new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }),
+      stats: {
+        teacherCount: 0,
+        studentCount: 0,
+        courseCount: 0,
+        teachingClassCount: 0
+      },
+      loading: false
     }
+  },
+  mounted() {
+    this.loadStatsData()
   },
   methods: {
     navigateTo(path) {
       this.$router.push(path);
+    },
+    
+    async loadStatsData() {
+      this.loading = true;
+      try {
+        // 并行获取所有统计数据
+        const [teacherRes, studentRes, courseRes, classRes] = await Promise.all([
+          getTeacherCount(),
+          getStudentCount(),
+          getCourseCount(),
+          getTeachingClassCount()
+        ]);
+        
+        if (teacherRes.success) {
+          this.stats.teacherCount = teacherRes.data;
+        }
+        
+        if (studentRes.success) {
+          this.stats.studentCount = studentRes.data;
+        }
+        
+        if (courseRes.success) {
+          this.stats.courseCount = courseRes.data;
+        }
+        
+        if (classRes.success) {
+          this.stats.teachingClassCount = classRes.data;
+        }
+        
+      } catch (error) {
+        console.error('获取统计数据失败:', error);
+        // 保持默认值0
+      } finally {
+        this.loading = false;
+      }
     }
   }
 }
 </script>
 
 <style scoped>
+/* 保持原有的CSS样式不变 */
 .home-page {
   padding: 0;
   font-family: 'Helvetica Neue', Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;

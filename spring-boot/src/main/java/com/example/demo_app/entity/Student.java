@@ -6,8 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-import java.time.LocalDateTime;
-
 @Data
 @TableName(value = "Student", keepGlobalPrefix = false)
 public class Student {
@@ -40,5 +38,4 @@ public class Student {
 
     @TableField(value = "admin_account")
     private String adminAccount;
-
 }

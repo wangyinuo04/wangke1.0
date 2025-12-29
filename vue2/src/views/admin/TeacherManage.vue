@@ -34,8 +34,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="teacher in filteredTeachers" :key="teacher.id">
-            <td class="id-col">{{ teacher.id }}</td>
+          <tr v-for="teacher in filteredTeachers" :key="teacher.teacherId">
+            <td class="id-col">{{ teacher.teacherId }}</td>
             <td class="name-col">{{ teacher.name }}</td>
             <td>{{ teacher.gender }}</td>
             <td>{{ teacher.department }}</td>
@@ -49,9 +49,9 @@
             <td>
               <span 
                 class="status-badge" 
-                :class="teacher.status === 'active' ? 'status-active' : 'status-disabled'"
+                :class="getStatusClass(teacher.accountStatus)"
               >
-                {{ teacher.status === 'active' ? '正常' : '已禁用' }}
+                {{ teacher.accountStatus === '正常' ? '正常' : '已禁用' }}
               </span>
             </td>
             <td class="action-col">
@@ -61,10 +61,10 @@
               
               <button 
                 class="btn-text" 
-                :class="teacher.status === 'active' ? 'btn-warn' : 'btn-success'"
+                :class="teacher.accountStatus === '正常' ? 'btn-warn' : 'btn-success'"
                 @click="toggleStatus(teacher)"
               >
-                {{ teacher.status === 'active' ? '禁用' : '启用' }}
+                {{ teacher.accountStatus === '正常' ? '禁用' : '启用' }}
               </button>
 
               <button class="btn-text btn-info" @click="resetPassword(teacher)" title="重置为默认密码">
@@ -94,7 +94,7 @@
             <div class="form-row">
               <div class="form-group">
                 <label>教工号 <span class="required">*</span></label>
-                <input type="text" v-model="form.id" :disabled="isEditMode" placeholder="唯一工号" required>
+                <input type="text" v-model="form.teacherId" :disabled="isEditMode" placeholder="唯一工号" required>
               </div>
               <div class="form-group">
                 <label>姓名 <span class="required">*</span></label>
@@ -145,6 +145,8 @@
 </template>
 
 <script>
+import * as teacherApi from '@/api/teacher'
+
 export default {
   name: 'TeacherManage',
   data() {
@@ -152,24 +154,17 @@ export default {
       searchQuery: '',
       showModal: false,
       isEditMode: false,
-      // 模拟数据库数据 (原3条 + 新增10条)
-      teachers: [
-        { id: 'T2023001', name: '王建国', gender: '男', department: '计算机学院', title: '教授', phone: '13800138000', email: 'wang@edu.cn', status: 'active' },
-        { id: 'T2023002', name: '李晓梅', gender: '女', department: '软件学院', title: '讲师', phone: '13912345678', email: 'lixm@edu.cn', status: 'active' },
-        { id: 'T2023003', name: '张伟', gender: '男', department: '人工智能学院', title: '副教授', phone: '13666666666', email: 'zhangw@edu.cn', status: 'disabled' },
-        // --- 新增数据 ---
-        { id: 'T2023004', name: '刘志远', gender: '男', department: '电子信息学院', title: '副教授', phone: '13812341234', email: 'liuzy@edu.cn', status: 'active' },
-        { id: 'T2023005', name: '陈静', gender: '女', department: '外国语学院', title: '讲师', phone: '13987654321', email: 'chenj@edu.cn', status: 'active' },
-        { id: 'T2023006', name: '赵强', gender: '男', department: '土木工程学院', title: '教授', phone: '13700001111', email: 'zhaoq@edu.cn', status: 'active' },
-        { id: 'T2023007', name: '孙丽', gender: '女', department: '经济管理学院', title: '副教授', phone: '13655556666', email: 'sunl@edu.cn', status: 'disabled' },
-        { id: 'T2023008', name: '周杰', gender: '男', department: '艺术设计学院', title: '讲师', phone: '13588889999', email: 'zhouj@edu.cn', status: 'active' },
-        { id: 'T2023009', name: '吴刚', gender: '男', department: '数学科学学院', title: '教授', phone: '13422223333', email: 'wug@edu.cn', status: 'active' },
-        { id: 'T2023010', name: '郑薇', gender: '女', department: '法学院', title: '讲师', phone: '13344445555', email: 'zhengv@edu.cn', status: 'active' },
-        { id: 'T2023011', name: '冯敏', gender: '女', department: '马克思主义学院', title: '助教', phone: '13266667777', email: 'fengm@edu.cn', status: 'active' },
-        { id: 'T2023012', name: '褚卫', gender: '男', department: '体育学院', title: '讲师', phone: '13188880000', email: 'chuw@edu.cn', status: 'disabled' },
-        { id: 'T2023013', name: '蒋欣', gender: '女', department: '生命科学学院', title: '副教授', phone: '13099998888', email: 'jiangx@edu.cn', status: 'active' }
-      ],
-      form: { id: '', name: '', gender: '男', department: '', title: '讲师', phone: '', email: '' }
+      teachers: [],
+      loading: false,
+      form: {
+        teacherId: '',  // 注意字段名修改
+        name: '',
+        gender: '男',
+        department: '',
+        title: '讲师',
+        phone: '',
+        email: ''
+      }
     }
   },
   computed: {
@@ -177,62 +172,223 @@ export default {
       if (!this.searchQuery) return this.teachers;
       const query = this.searchQuery.toLowerCase();
       return this.teachers.filter(t => 
-        t.name.includes(query) || t.id.toLowerCase().includes(query)
+        t.name.toLowerCase().includes(query) || 
+        t.teacherId.toLowerCase().includes(query)  // 修改这里
       );
     }
   },
+  mounted() {
+    this.loadTeachers();
+  },
   methods: {
-    handleSearch() { console.log('Searching for:', this.searchQuery); },
-    
-    // 简单的职称颜色区分
+    // 加载教师列表
+    async loadTeachers() {
+      this.loading = true;
+      try {
+        const response = await teacherApi.getTeacherList();
+        if (response.success) {
+          this.teachers = response.data;
+          console.log('加载的教师数据:', this.teachers); // 调试用
+        } else {
+          this.$message.error(response.message || '加载失败');
+        }
+      } catch (error) {
+        console.error('加载教师列表失败:', error);
+        this.$message.error('网络错误，请检查后端服务');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // 搜索教师
+    async handleSearch() {
+      this.loading = true;
+      try {
+        const response = await teacherApi.getTeacherList(this.searchQuery);
+        if (response.success) {
+          this.teachers = response.data;
+        } else {
+          this.$message.error(response.message || '搜索失败');
+        }
+      } catch (error) {
+        console.error('搜索失败:', error);
+        this.$message.error('搜索失败');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // 职称颜色区分
     getTitleClass(title) {
       if (title === '教授') return 'badge-prof';
       if (title === '副教授') return 'badge-assoc';
       return 'badge-normal';
     },
 
-    openAddModal() {
-      this.isEditMode = false;
-      this.form = { id: '', name: '', gender: '男', department: '', title: '讲师', phone: '', email: '' };
-      this.showModal = true;
-    },
-    openEditModal(teacher) {
-      this.isEditMode = true;
-      this.form = { ...teacher };
-      this.showModal = true;
-    },
-    closeModal() { this.showModal = false; },
-    
-    saveTeacher() {
-      if (this.isEditMode) {
-        const index = this.teachers.findIndex(t => t.id === this.form.id);
-        if (index !== -1) {
-          this.teachers.splice(index, 1, { ...this.teachers[index], ...this.form });
-          alert('修改成功！');
-        }
-      } else {
-        if (this.teachers.find(t => t.id === this.form.id)) return alert('错误：该教工号已存在！');
-        this.teachers.push({ ...this.form, status: 'active' });
-        alert(`新增成功！\n初始密码已设置为系统默认: 123456`);
-      }
-      this.closeModal();
+    // 状态颜色区分（新增方法）
+    getStatusClass(status) {
+      return status === '正常' ? 'status-active' : 'status-disabled';
     },
 
-    toggleStatus(teacher) {
-      const action = teacher.status === 'active' ? '禁用' : '启用';
-      if (confirm(`确定要${action}该教师账号吗？\n${teacher.name} (${teacher.id})`)) {
-        teacher.status = teacher.status === 'active' ? 'disabled' : 'active';
+    openAddModal() {
+      this.isEditMode = false;
+      this.form = {
+        teacherId: '',
+        name: '',
+        gender: '男',
+        department: '',
+        title: '讲师',
+        phone: '',
+        email: ''
+      };
+      this.showModal = true;
+    },
+    
+    openEditModal(teacher) {
+      this.isEditMode = true;
+      // 确保字段名匹配
+      this.form = { 
+        teacherId: teacher.teacherId,
+        name: teacher.name,
+        gender: teacher.gender,
+        department: teacher.department,
+        title: teacher.title,
+        phone: teacher.phone,
+        email: teacher.email
+      };
+      this.showModal = true;
+    },
+    
+    closeModal() {
+      this.showModal = false;
+    },
+    
+    // 保存教师（新增或编辑）
+    async saveTeacher() {
+      // 验证必填字段
+      if (!this.form.teacherId.trim()) {
+        this.$message.warning('请输入教工号');
+        return;
+      }
+      if (!this.form.name.trim()) {
+        this.$message.warning('请输入姓名');
+        return;
+      }
+      if (!this.form.department.trim()) {
+        this.$message.warning('请输入所属院系');
+        return;
+      }
+
+      try {
+        if (this.isEditMode) {
+          // 更新教师信息
+          const response = await teacherApi.updateTeacher(this.form);
+          if (response.success) {
+            this.$message.success(response.message);
+            this.closeModal();
+            this.loadTeachers(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        } else {
+          // 新增教师
+          const response = await teacherApi.addTeacher(this.form);
+          if (response.success) {
+            this.$message.success(response.message);
+            this.$message.info('初始密码已设置为：123456');
+            this.closeModal();
+            this.loadTeachers(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('保存失败:', error);
+        this.$message.error('操作失败，请检查网络连接');
       }
     },
-    resetPassword(teacher) {
-      if (confirm(`确定要重置 ${teacher.name} 的密码吗？\n密码将被强制恢复为: 123456`)) {
-        alert('操作成功！密码已重置。');
+
+    // 切换账号状态
+    async toggleStatus(teacher) {
+      const action = teacher.accountStatus === '正常' ? '禁用' : '启用';  // 修改这里
+      try {
+        const confirm = await this.$confirm(
+          `确定要${action}该教师账号吗？\n${teacher.name} (${teacher.teacherId})`,  // 修改这里
+          '提示',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        ).catch(() => false);
+        
+        if (confirm) {
+          const response = await teacherApi.toggleTeacherStatus(teacher.teacherId);  // 修改这里
+          if (response.success) {
+            this.$message.success(response.message);
+            this.loadTeachers(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('状态切换失败:', error);
+        this.$message.error('操作失败');
       }
     },
-    deleteTeacher(teacher) {
-      if (confirm(`【危险操作】确定要删除教师 ${teacher.name} 吗？\n此操作不可恢复！`)) {
-        this.teachers = this.teachers.filter(t => t.id !== teacher.id);
-        alert('账号已删除。');
+
+    // 重置密码
+    async resetPassword(teacher) {
+      try {
+        const confirm = await this.$confirm(
+          `确定要重置 ${teacher.name} 的密码吗？\n密码将被强制恢复为: 123456`,
+          '提示',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        ).catch(() => false);
+        
+        if (confirm) {
+          const response = await teacherApi.resetTeacherPassword(teacher.teacherId);  // 修改这里
+          if (response.success) {
+            this.$message.success('密码重置成功，新密码为：123456');
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('密码重置失败:', error);
+        this.$message.error('操作失败');
+      }
+    },
+
+    // 删除教师
+    async deleteTeacher(teacher) {
+      try {
+        const confirm = await this.$confirm(
+          `【危险操作】确定要删除教师 ${teacher.name} 吗？\n此操作不可恢复！`,
+          '警告',
+          {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'error'
+          }
+        ).catch(() => false);
+        
+        if (confirm) {
+          const response = await teacherApi.deleteTeacher(teacher.teacherId);  // 修改这里
+          if (response.success) {
+            this.$message.success(response.message);
+            this.loadTeachers(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('删除失败:', error);
+        this.$message.error('删除失败');
       }
     }
   }

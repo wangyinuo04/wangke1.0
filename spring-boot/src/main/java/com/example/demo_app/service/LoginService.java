@@ -349,4 +349,55 @@ public class LoginService {
         String cleanEmail = email.trim().replaceAll("[\\x00-\\x1F\\x7F]", "");
         return EMAIL_PATTERN.matcher(cleanEmail).matches();
     }
+
+    /**
+     * 管理员修改密码
+     */
+    public Map<String, Object> changeAdminPassword(String account, String oldPassword, String newPassword) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            // 验证旧密码
+            QueryWrapper<Administrator> adminQuery = new QueryWrapper<>();
+            adminQuery.eq("account", account);
+            Administrator admin = administratorMapper.selectOne(adminQuery);
+
+            if (admin == null) {
+                result.put("success", false);
+                result.put("message", "管理员账号不存在");
+                return result;
+            }
+
+            if (!admin.getLoginPassword().equals(oldPassword)) {
+                result.put("success", false);
+                result.put("message", "旧密码错误");
+                return result;
+            }
+
+            if (oldPassword.equals(newPassword)) {
+                result.put("success", false);
+                result.put("message", "新密码不能与旧密码相同");
+                return result;
+            }
+
+            // 更新密码
+            admin.setLoginPassword(newPassword);
+            int rows = administratorMapper.updateById(admin);
+
+            if (rows > 0) {
+                result.put("success", true);
+                result.put("message", "密码修改成功");
+            } else {
+                result.put("success", false);
+                result.put("message", "密码修改失败");
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "系统错误: " + e.getMessage());
+        }
+
+        return result;
+    }
 }

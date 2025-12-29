@@ -17,3 +17,12 @@ export function register(data) {
     data: data
   })
 }
+
+// 管理员修改密码接口
+export function changeAdminPassword(data) {
+  return request({
+    url: '/api/admin/change-password',
+    method: 'post',
+    data: data
+  })
+}

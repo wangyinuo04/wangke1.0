@@ -23,7 +23,7 @@
               </div>
               <div class="status-dot"></div>
             </div>
-            <h3 class="admin-name">系统管理员</h3>
+            <h3 class="admin-name">{{ adminInfo.name || '系统管理员' }}</h3>
             <span class="admin-badge">超级管理员</span>
             
             <div class="divider"></div>
@@ -31,11 +31,11 @@
             <div class="info-list">
               <div class="info-item">
                 <span class="label">登录账号</span>
-                <span class="value">admin</span>
+                <span class="value">{{ adminInfo.account || 'admin' }}</span>
               </div>
               <div class="info-item">
                 <span class="label">所属部门</span>
-                <span class="value">教务处</span>
+                <span class="value">{{ adminInfo.department || '教务处' }}</span>
               </div>
               </div>
           </div>
@@ -97,9 +97,19 @@
                 ⚠️ 两次输入的密码不一致
               </div>
 
+              <div v-if="submitError" class="error-banner">
+                ⚠️ {{ submitError }}
+              </div>
+
+              <div v-if="submitSuccess" class="success-banner">
+                ✅ {{ submitSuccess }}
+              </div>
+
               <div class="form-actions">
                 <button type="button" class="btn-cancel" @click="resetForm">重置</button>
-                <button type="submit" class="btn-save">保存修改</button>
+                <button type="submit" class="btn-save" :disabled="submitting">
+                  {{ submitting ? '修改中...' : '保存修改' }}
+                </button>
               </div>
             </form>
           </div>
@@ -111,15 +121,25 @@
 </template>
 
 <script>
+import { changeAdminPassword } from '@/api/login'
+
 export default {
   name: 'AdminProfile',
   data() {
     return {
+      adminInfo: {
+        account: '',
+        name: '系统管理员',
+        department: '教务处'
+      },
       passForm: {
         oldPass: '',
         newPass: '',
         confirmPass: ''
-      }
+      },
+      submitting: false,
+      submitError: '',
+      submitSuccess: ''
     }
   },
   computed: {
@@ -145,24 +165,91 @@ export default {
       return '强';
     }
   },
+  mounted() {
+    this.loadAdminInfo();
+  },
   methods: {
     goBack() {
       this.$router.push('/admin');
     },
+    
+    loadAdminInfo() {
+      // 从localStorage获取管理员信息
+      const userInfoStr = localStorage.getItem('userInfo');
+      if (userInfoStr) {
+        try {
+          const userInfo = JSON.parse(userInfoStr);
+          if (userInfo.role === 'admin') {
+            this.adminInfo.account = userInfo.account || 'admin';
+            this.adminInfo.name = userInfo.name || '系统管理员';
+          }
+        } catch (e) {
+          console.error('解析管理员信息失败:', e);
+        }
+      }
+    },
+    
     resetForm() {
       this.passForm = { oldPass: '', newPass: '', confirmPass: '' };
+      this.submitError = '';
+      this.submitSuccess = '';
     },
-    updatePassword() {
+    
+    async updatePassword() {
+      // 前端验证
       if (this.passwordMismatch) {
-        return alert('错误：两次输入的新密码不一致！');
-      }
-      if (this.passForm.oldPass === this.passForm.newPass) {
-        return alert('错误：新密码不能与旧密码相同！');
+        this.submitError = '错误：两次输入的新密码不一致！';
+        return;
       }
       
-      console.log('Update password:', this.passForm);
-      alert('密码修改成功！请重新登录。');
-      this.$router.push('/login');
+      if (this.passForm.oldPass === this.passForm.newPass) {
+        this.submitError = '错误：新密码不能与旧密码相同！';
+        return;
+      }
+      
+      if (this.passForm.newPass.length < 6) {
+        this.submitError = '错误：新密码长度不能少于6位！';
+        return;
+      }
+      
+      // 获取当前管理员账号
+      const adminAccount = this.adminInfo.account || 'admin';
+      
+      this.submitting = true;
+      this.submitError = '';
+      this.submitSuccess = '';
+      
+      try {
+        const requestData = {
+          account: adminAccount,
+          oldPassword: this.passForm.oldPass,
+          newPassword: this.passForm.newPass
+        };
+        
+        console.log('发送密码修改请求:', requestData);
+        
+        const response = await changeAdminPassword(requestData);
+        console.log('密码修改响应:', response);
+        
+        if (response.success) {
+          this.submitSuccess = response.message || '密码修改成功！请重新登录。';
+          
+          // 3秒后跳转到登录页
+          setTimeout(() => {
+            // 清除本地存储的用户信息
+            localStorage.removeItem('userInfo');
+            // 跳转到登录页
+            this.$router.push('/login');
+          }, 3000);
+        } else {
+          this.submitError = response.message || '密码修改失败，请检查旧密码是否正确';
+        }
+      } catch (error) {
+        console.error('密码修改请求失败:', error);
+        this.submitError = '网络错误，请检查后端服务是否正常运行';
+      } finally {
+        this.submitting = false;
+      }
     }
   }
 }
@@ -366,6 +453,12 @@ export default {
   display: flex; align-items: center;
 }
 
+.success-banner {
+  background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a;
+  padding: 10px 15px; border-radius: 6px; font-size: 13px; margin-bottom: 25px;
+  display: flex; align-items: center;
+}
+
 .form-actions { margin-top: 20px; display: flex; gap: 15px; }
 .btn-save {
   padding: 12px 35px; background: #1890ff; color: white;
@@ -373,6 +466,11 @@ export default {
   cursor: pointer; box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3); transition: all 0.3s;
 }
 .btn-save:hover { background: #40a9ff; transform: translateY(-2px); }
+.btn-save:disabled {
+  background: #bae7ff;
+  cursor: not-allowed;
+  transform: none;
+}
 
 .btn-cancel {
   padding: 12px 30px; background: white; border: 1px solid #dcdfe6;

@@ -10,12 +10,12 @@
           <input 
             type="text" 
             v-model="searchQuery" 
-            placeholder="搜索学号或行政班级..."
+            placeholder="搜索学号或姓名..."
             @keyup.enter="handleSearch"
           >
           <button class="btn btn-search" @click="handleSearch">🔍 搜索</button>
         </div>
-        <button class="btn btn-primary" @click="openAddModal">+ 新增学生</button>
+        <!-- 移除了新增学生按钮 -->
       </div>
     </div>
 
@@ -34,11 +34,11 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="student in filteredStudents" :key="student.id">
-            <td class="id-col">{{ student.id }}</td>
+          <tr v-for="student in filteredStudents" :key="student.studentId">
+            <td class="id-col">{{ student.studentId }}</td>
             <td class="name-col">{{ student.name }}</td>
             <td>
-              <span class="badge-class">{{ student.class }}</span>
+              <span class="badge-class">{{ student.className }}</span>
             </td>
             <td>{{ student.major }}</td>
             <td>{{ student.enrollmentYear }}级</td>
@@ -49,9 +49,9 @@
             <td>
               <span 
                 class="status-badge" 
-                :class="student.status === 'active' ? 'status-active' : 'status-disabled'"
+                :class="student.accountStatus === '正常' ? 'status-active' : 'status-disabled'"
               >
-                {{ student.status === 'active' ? '正常' : '异常' }}
+                {{ student.accountStatus === '正常' ? '正常' : '禁用' }}
               </span>
             </td>
             <td class="action-col">
@@ -61,10 +61,10 @@
               
               <button 
                 class="btn-text" 
-                :class="student.status === 'active' ? 'btn-warn' : 'btn-success'"
+                :class="student.accountStatus === '正常' ? 'btn-warn' : 'btn-success'"
                 @click="toggleStatus(student)"
               >
-                {{ student.status === 'active' ? '冻结' : '解冻' }}
+                {{ student.accountStatus === '正常' ? '禁用' : '启用' }}
               </button>
 
               <button class="btn-text btn-info" @click="resetPassword(student)" title="重置密码">
@@ -86,15 +86,15 @@
     <div class="modal-mask" v-if="showModal">
       <div class="modal-box">
         <div class="modal-header">
-          <h3>{{ isEditMode ? '修正学生档案' : '录入新学生' }}</h3>
+          <h3>修正学生档案</h3>
           <span class="close-btn" @click="closeModal">×</span>
         </div>
         <div class="modal-body">
           <form @submit.prevent="saveStudent">
             <div class="form-row">
               <div class="form-group">
-                <label>学号 <span class="required">*</span></label>
-                <input type="text" v-model="form.id" :disabled="isEditMode" placeholder="唯一学号" required>
+                <label>学号</label>
+                <input type="text" v-model="form.studentId" disabled>
               </div>
               <div class="form-group">
                 <label>姓名 <span class="required">*</span></label>
@@ -105,7 +105,7 @@
             <div class="form-row">
               <div class="form-group">
                 <label>行政班级 <span class="required">*</span></label>
-                <input type="text" v-model="form.class" placeholder="例: 软件2201" required>
+                <input type="text" v-model="form.className" placeholder="例: 软件2201" required>
               </div>
               <div class="form-group">
                 <label>专业 <span class="required">*</span></label>
@@ -151,6 +151,8 @@
 </template>
 
 <script>
+import * as studentApi from '@/api/student'
+
 export default {
   name: 'StudentManage',
   data() {
@@ -158,88 +160,207 @@ export default {
       searchQuery: '',
       showModal: false,
       isEditMode: false,
-      // 模拟学生数据
-      students: [
-        { id: 'S2023001', name: '张三', gender: '男', class: '软件2201', major: '软件工程', enrollmentYear: '2022', phone: '13811112222', email: 'zhang3@stu.edu.cn', status: 'active' },
-        { id: 'S2023002', name: '李四', gender: '女', class: '计科2202', major: '计算机科学', enrollmentYear: '2022', phone: '13933334444', email: 'li4@stu.edu.cn', status: 'active' },
-        { id: 'S2023003', name: '王五', gender: '男', class: '软件2201', major: '软件工程', enrollmentYear: '2022', phone: '13655556666', email: 'wang5@stu.edu.cn', status: 'disabled' },
-        { id: 'S2023004', name: '赵六', gender: '女', class: '物联网2301', major: '物联网工程', enrollmentYear: '2023', phone: '13577778888', email: 'zhao6@stu.edu.cn', status: 'active' },
-        { id: 'S2023005', name: '钱七', gender: '男', class: '计科2202', major: '计算机科学', enrollmentYear: '2022', phone: '13499990000', email: 'qian7@stu.edu.cn', status: 'active' },
-      ],
-      // 表单对象 (对应功能 1.3.1 修改项)
+      students: [],
+      loading: false,
       form: {
-        id: '', name: '', gender: '男', class: '', major: '', enrollmentYear: '', phone: '', email: ''
+        studentId: '',
+        name: '',
+        gender: '男',
+        className: '',
+        major: '',
+        enrollmentYear: new Date().getFullYear(),
+        phone: '',
+        email: ''
       }
     }
   },
   computed: {
-    // 1.3.1 查询功能：支持学号或班级过滤
     filteredStudents() {
       if (!this.searchQuery) return this.students;
       const query = this.searchQuery.toLowerCase();
       return this.students.filter(s => 
-        s.id.toLowerCase().includes(query) || 
-        s.class.includes(query)
+        (s.studentId && s.studentId.toLowerCase().includes(query)) || 
+        (s.name && s.name.toLowerCase().includes(query)) ||
+        (s.className && s.className.includes(query))
       );
     }
   },
+  mounted() {
+    this.loadStudents();
+  },
   methods: {
-    handleSearch() {
-      console.log('Searching student:', this.searchQuery);
+    // 加载学生列表
+    async loadStudents() {
+      this.loading = true;
+      try {
+        const response = await studentApi.getStudentList();
+        if (response.success) {
+          this.students = response.data;
+          console.log('加载的学生数据:', this.students);
+        } else {
+          this.$message.error(response.message || '加载失败');
+        }
+      } catch (error) {
+        console.error('加载学生列表失败:', error);
+        this.$message.error('网络错误，请检查后端服务');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // 搜索学生
+    async handleSearch() {
+      this.loading = true;
+      try {
+        const response = await studentApi.getStudentList(this.searchQuery);
+        if (response.success) {
+          this.students = response.data;
+        } else {
+          this.$message.error(response.message || '搜索失败');
+        }
+      } catch (error) {
+        console.error('搜索失败:', error);
+        this.$message.error('搜索失败');
+      } finally {
+        this.loading = false;
+      }
     },
     
-    // --- 弹窗逻辑 ---
-    openAddModal() {
-      this.isEditMode = false;
-      this.form = { id: '', name: '', gender: '男', class: '', major: '', enrollmentYear: new Date().getFullYear(), phone: '', email: '' };
-      this.showModal = true;
-    },
+    // 打开编辑模态框
     openEditModal(student) {
-      this.isEditMode = true;
-      // 深拷贝，防止修改时影响列表显示
-      this.form = { ...student };
+      this.form = { 
+        studentId: student.studentId,
+        name: student.name,
+        gender: student.gender,
+        className: student.className,
+        major: student.major,
+        enrollmentYear: student.enrollmentYear,
+        phone: student.phone,
+        email: student.email,
+        department: student.department || '' // 添加院系字段
+      };
       this.showModal = true;
     },
+    
     closeModal() {
       this.showModal = false;
     },
-    saveStudent() {
-      if (this.isEditMode) {
-        // 更新逻辑 (1.3.1 修正档案)
-        const index = this.students.findIndex(s => s.id === this.form.id);
-        if (index !== -1) {
-          this.students.splice(index, 1, { ...this.students[index], ...this.form });
-          alert('学生档案更新成功！');
-        }
-      } else {
-        // 新增逻辑
-        if (this.students.find(s => s.id === this.form.id)) {
-          return alert('错误：该学号已存在！');
-        }
-        this.students.push({ ...this.form, status: 'active' });
-        alert(`新增成功！\n初始密码已设置为: 123456`);
+    
+    // 保存学生信息
+    async saveStudent() {
+      if (!this.form.name.trim()) {
+        this.$message.warning('请输入姓名');
+        return;
       }
-      this.closeModal();
+      if (!this.form.className.trim()) {
+        this.$message.warning('请输入行政班级');
+        return;
+      }
+      if (!this.form.major.trim()) {
+        this.$message.warning('请输入专业');
+        return;
+      }
+      if (!this.form.enrollmentYear) {
+        this.$message.warning('请输入入学年份');
+        return;
+      }
+
+      try {
+        const response = await studentApi.updateStudent(this.form);
+        if (response.success) {
+          this.$message.success(response.message);
+          this.closeModal();
+          this.loadStudents(); // 重新加载数据
+        } else {
+          this.$message.error(response.message);
+        }
+      } catch (error) {
+        console.error('更新失败:', error);
+        this.$message.error('操作失败，请检查网络连接');
+      }
     },
 
-    // --- 账号安全管理功能 (1.3.2) ---
-    toggleStatus(student) {
-      const action = student.status === 'active' ? '冻结' : '解冻';
-      if (confirm(`确定要${action}该学生账号吗？\n${student.name} (${student.id})`)) {
-        student.status = student.status === 'active' ? 'disabled' : 'active';
+    // 切换账号状态
+    async toggleStatus(student) {
+      const action = student.accountStatus === '正常' ? '禁用' : '启用';
+      try {
+        const confirm = await this.$confirm(
+          `确定要${action}该学生账号吗？\n${student.name} (${student.studentId})`,
+          '提示',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        ).catch(() => false);
+        
+        if (confirm) {
+          const response = await studentApi.toggleStudentStatus(student.studentId);
+          if (response.success) {
+            this.$message.success(response.message);
+            this.loadStudents(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('状态切换失败:', error);
+        this.$message.error('操作失败');
       }
     },
-    resetPassword(student) {
-      // 1.3.2 重置学生密码
-      if (confirm(`确定要重置学生 ${student.name} 的密码吗？\n密码将被重置为默认值: 123456`)) {
-        alert('操作成功！密码已重置。');
+
+    // 重置密码
+    async resetPassword(student) {
+      try {
+        const confirm = await this.$confirm(
+          `确定要重置学生 ${student.name} 的密码吗？\n密码将被重置为默认值: 123456`,
+          '提示',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        ).catch(() => false);
+        
+        if (confirm) {
+          const response = await studentApi.resetStudentPassword(student.studentId);
+          if (response.success) {
+            this.$message.success('密码重置成功，新密码为：123456');
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('密码重置失败:', error);
+        this.$message.error('操作失败');
       }
     },
-    deleteStudent(student) {
-      // 1.3.2 删除非法注册账号
-      if (confirm(`【危险】确定要删除学生 ${student.name} 吗？\n此操作将清除该学生的所有选课和成绩记录！`)) {
-        this.students = this.students.filter(s => s.id !== student.id);
-        alert('账号已删除。');
+
+    // 删除学生
+    async deleteStudent(student) {
+      try {
+        const confirm = await this.$confirm(
+          `【危险】确定要删除学生 ${student.name} 吗？\n此操作将清除该学生的所有选课和成绩记录！`,
+          '警告',
+          {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'error'
+          }
+        ).catch(() => false);
+        
+        if (confirm) {
+          const response = await studentApi.deleteStudent(student.studentId);
+          if (response.success) {
+            this.$message.success(response.message);
+            this.loadStudents(); // 重新加载数据
+          } else {
+            this.$message.error(response.message);
+          }
+        }
+      } catch (error) {
+        console.error('删除失败:', error);
+        this.$message.error('删除失败');
       }
     }
   }
