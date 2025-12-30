@@ -128,3 +128,27 @@ export function getTeachingClassCount() {
     method: 'get'
   })
 }
+
+// 获取教师负责的教学班列表
+export function getTeacherCourses(teacherId) {
+  return request({
+    url: `/api/teachingClass/teacher/${teacherId}`,
+    method: 'get'
+  })
+}
+
+// 生成班级邀请码
+export function generateInviteCode(classId) {
+  return request({
+    url: `/api/teachingClass/${classId}/generate-invite-code`,
+    method: 'post'
+  })
+}
+
+// 获取班级学生详细信息
+export function getClassStudentDetails(classId) {
+  return request({
+    url: `/api/teachingClass/${classId}/student-details`,
+    method: 'get'
+  })
+}

@@ -1,16 +1,20 @@
 package com.example.demo_app.controller;
 
+import com.example.demo_app.entity.Course;
 import com.example.demo_app.entity.Student;
 import com.example.demo_app.entity.TeachingClass;
+import com.example.demo_app.mapper.EnrollmentMapper;
+import com.example.demo_app.service.CourseService;
 import com.example.demo_app.service.EnrollmentService;
+import com.example.demo_app.service.StudentService;
 import com.example.demo_app.service.TeachingClassService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/teachingClass")
@@ -22,6 +26,166 @@ public class TeachingClassController {
 
     @Autowired
     private EnrollmentService enrollmentService;
+
+    @Autowired
+    private StudentService studentService;
+
+    @Autowired
+    private CourseService courseService;
+
+    @Autowired
+    private EnrollmentMapper enrollmentMapper;
+
+    /**
+     * 获取教师负责的所有教学班（包含学生人数）
+     */
+    @GetMapping("/teacher/{teacherId}")
+    public Map<String, Object> getTeachingClassesByTeacher(@PathVariable String teacherId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 获取教师的所有教学班
+            List<TeachingClass> teachingClasses = teachingClassService.getTeachingClassesByTeacher(teacherId);
+
+            // 为每个教学班添加学生人数统计和课程名称
+            List<Map<String, Object>> resultList = new ArrayList<>();
+            for (TeachingClass tc : teachingClasses) {
+                Map<String, Object> classInfo = new HashMap<>();
+                classInfo.put("id", tc.getClassId()); // 前端需要id字段
+                classInfo.put("semester", tc.getSemester());
+                classInfo.put("className", tc.getClassName());
+                classInfo.put("invitationCode", tc.getInvitationCode());
+                classInfo.put("expiryDate", tc.getExpiryDate());
+
+                // 获取课程名称
+                Course course = courseService.getById(tc.getCourseId());
+                if (course != null) {
+                    classInfo.put("courseName", course.getCourseName());
+                } else {
+                    classInfo.put("courseName", "未知课程");
+                }
+
+                // 统计学生人数 - 重要：确保字段名正确
+                long studentCount = enrollmentMapper.countByClassId(tc.getClassId());
+                classInfo.put("studentCount", studentCount); // 这个字段名必须匹配前端
+
+                // 获取学生列表
+                List<String> studentIds = enrollmentMapper.findStudentIdsByClassId(tc.getClassId());
+                List<Map<String, String>> students = new ArrayList<>();
+                for (String studentId : studentIds) {
+                    Student student = studentService.getById(studentId);
+                    if (student != null) {
+                        Map<String, String> stu = new HashMap<>();
+                        stu.put("id", student.getStudentId());
+                        stu.put("name", student.getName());
+                        stu.put("adminClass", student.getClassName());
+                        students.add(stu);
+                    }
+                }
+                classInfo.put("students", students);
+
+                resultList.add(classInfo);
+            }
+
+            result.put("success", true);
+            result.put("data", resultList);
+            result.put("message", "查询成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "查询失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 生成或更新班级邀请码
+     */
+    @PostMapping("/{classId}/generate-invite-code")
+    public Map<String, Object> generateInviteCode(@PathVariable String classId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            TeachingClass teachingClass = teachingClassService.getById(classId);
+            if (teachingClass == null) {
+                result.put("success", false);
+                result.put("message", "教学班不存在");
+                return result;
+            }
+
+            // 生成6位随机邀请码（字母和数字）
+            String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            StringBuilder code = new StringBuilder();
+            Random random = new Random();
+            for (int i = 0; i < 6; i++) {
+                code.append(chars.charAt(random.nextInt(chars.length())));
+            }
+
+            // 设置有效期（7天后）
+            LocalDateTime expiryDate = LocalDateTime.now().plusDays(7);
+
+            // 更新数据库
+            teachingClass.setInvitationCode(code.toString());
+            teachingClass.setExpiryDate(expiryDate);
+            boolean success = teachingClassService.updateById(teachingClass);
+
+            if (success) {
+                // 改为传统的HashMap方式
+                Map<String, Object> data = new HashMap<>();
+                data.put("inviteCode", code.toString());
+                data.put("expiryDate", expiryDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+
+                result.put("success", true);
+                result.put("data", data);
+                result.put("message", "邀请码生成成功");
+            } else {
+                result.put("success", false);
+                result.put("message", "生成邀请码失败");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "生成失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取班级学生详细信息列表
+     */
+    @GetMapping("/{classId}/student-details")
+    public Map<String, Object> getClassStudentDetails(@PathVariable String classId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            TeachingClass teachingClass = teachingClassService.getById(classId);
+            if (teachingClass == null) {
+                result.put("success", false);
+                result.put("message", "教学班不存在");
+                return result;
+            }
+
+            List<String> studentIds = enrollmentMapper.findStudentIdsByClassId(classId);
+            List<Map<String, String>> students = new ArrayList<>();
+
+            for (String studentId : studentIds) {
+                Student student = studentService.getById(studentId);
+                if (student != null) {
+                    Map<String, String> stu = new HashMap<>();
+                    stu.put("id", student.getStudentId());
+                    stu.put("name", student.getName());
+                    stu.put("adminClass", student.getClassName());
+                    students.add(stu);
+                }
+            }
+
+            result.put("success", true);
+            result.put("data", students);
+            result.put("message", "查询成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "查询失败：" + e.getMessage());
+        }
+        return result;
+    }
 
     /**
      * 获取所有教学班列表（支持搜索）

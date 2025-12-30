@@ -7,12 +7,7 @@
       </div>
       <div class="operation-section">
         <div class="search-box">
-          <input 
-            type="text" 
-            v-model="searchQuery" 
-            placeholder="搜索课程或班级名称..."
-            @keyup.enter="handleSearch"
-          >
+          <input type="text" v-model="searchQuery" placeholder="搜索课程或班级名称..." @keyup.enter="handleSearch">
           <button class="btn btn-search" @click="handleSearch">🔍 搜索</button>
         </div>
       </div>
@@ -78,7 +73,7 @@
           <div class="big-code">{{ currentCourse.inviteCode }}</div>
           <p class="invite-expiry">有效期至：{{ currentCourse.inviteExpiry }}</p>
           <p class="hint">请将此码告知学生，学生可在“加入课程”中输入此码入班</p>
-          
+
           <button class="btn btn-primary btn-refresh" @click="generateInviteCode(currentCourse)">
             🔄 重新生成
           </button>
@@ -97,7 +92,7 @@
             <div class="stat">共 <strong>{{ currentCourse.students.length }}</strong> 名学生</div>
             <input type="text" v-model="studentSearch" placeholder="筛选学生姓名或学号..." class="mini-search">
           </div>
-          
+
           <div class="member-list-container">
             <table class="member-table">
               <thead>
@@ -133,6 +128,8 @@
 </template>
 
 <script>
+import { getTeacherCourses, generateInviteCode, getClassStudentDetails, removeStudentFromClass } from '@/api/teachingClass'
+
 export default {
   name: 'MyCourses',
   data() {
@@ -142,113 +139,179 @@ export default {
       showInviteModal: false,
       showMemberModal: false,
       currentCourse: null,
-
-      // --- 模拟数据: 教师负责的课程 ---
-      myCourses: [
-        { 
-          id: 101, 
-          semester: '2025-2026-1', 
-          courseName: '软件工程导论', 
-          className: '软件2201班', 
-          inviteCode: 'A8J9K2', 
-          inviteExpiry: '2025-10-01',
-          students: [
-            { id: 'S2023001', name: '张三', adminClass: '软件2201' },
-            { id: 'S2023003', name: '王五', adminClass: '软件2201' },
-            { id: 'S2023006', name: '孙悟空', adminClass: '软件2201' }
-          ]
-        },
-        { 
-          id: 102, 
-          semester: '2025-2026-1', 
-          courseName: 'Web前端开发', 
-          className: '计科卓越班', 
-          inviteCode: '', // 尚未生成
-          inviteExpiry: '',
-          students: [
-            { id: 'S2023002', name: '李四', adminClass: '计科2202' },
-            { id: 'S2023005', name: '钱七', adminClass: '计科2202' }
-          ]
-        },
-        { 
-          id: 103, 
-          semester: '2024-2025-2', 
-          courseName: '数据库原理', 
-          className: '重修班', 
-          inviteCode: 'XY7788', 
-          inviteExpiry: '2025-06-30 (已过期)',
-          students: []
-        }
-      ]
+      myCourses: [], // 清空模拟数据，改为空数组
+      loading: false,
+      teacherId: '' // 存储教师ID
     }
   },
   computed: {
     filteredCourses() {
       if (!this.searchQuery) return this.myCourses;
       const q = this.searchQuery.toLowerCase();
-      return this.myCourses.filter(c => 
-        c.courseName.toLowerCase().includes(q) || 
-        c.className.toLowerCase().includes(q)
+      return this.myCourses.filter(c =>
+        (c.courseName && c.courseName.toLowerCase().includes(q)) ||
+        (c.className && c.className.toLowerCase().includes(q))
       );
     },
     filteredStudents() {
-      if (!this.currentCourse) return [];
+      if (!this.currentCourse || !this.currentCourse.students) return [];
       if (!this.studentSearch) return this.currentCourse.students;
       const q = this.studentSearch.toLowerCase();
-      return this.currentCourse.students.filter(s => 
-        s.name.includes(q) || s.id.toLowerCase().includes(q)
+      return this.currentCourse.students.filter(s =>
+        (s.name && s.name.includes(q)) ||
+        (s.id && s.id.toLowerCase().includes(q))
       );
     }
   },
+  created() {
+    // 从Vuex或localStorage获取教师ID
+    const userInfo = this.$store.state.userInfo || JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.role === 'teacher' && userInfo.id) {
+      this.teacherId = userInfo.id;
+      this.loadTeacherCourses();
+    } else {
+      console.error('未获取到教师信息');
+      this.$message.error('无法获取教师信息，请重新登录');
+    }
+  },
   methods: {
-    handleSearch() { console.log('searching...'); },
-    
-    // --- 邀请码逻辑 (2.2.2) ---
-    generateInviteCode(course) {
-      // 模拟生成6位随机字符
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      let code = '';
-      for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      
-      // 设置有效期 (默认7天后)
-      const date = new Date();
-      date.setDate(date.getDate() + 7);
-      const expiry = date.toISOString().split('T')[0];
+    // 加载教师负责的课程
+    async loadTeacherCourses() {
+      this.loading = true;
+      try {
+        const response = await getTeacherCourses(this.teacherId);
+        console.log('API返回数据:', response); // 添加调试日志
 
-      // 更新数据
-      course.inviteCode = code;
-      course.inviteExpiry = expiry;
-      
-      this.currentCourse = course; // 如果在弹窗中刷新，需同步更新
-      if (!this.showInviteModal) {
-        // 如果是首次生成，不弹窗，或者可以选择直接弹窗展示
-        alert(`邀请码生成成功：${code}\n有效期至：${expiry}`);
+        if (response.success && response.data) {
+          // 调试：查看第一个课程的数据结构
+          if (response.data.length > 0) {
+            console.log('第一个课程原始数据:', response.data[0]);
+            console.log('可用字段:', Object.keys(response.data[0]));
+          }
+
+          this.myCourses = response.data.map(course => ({
+            id: course.id || course.classId, // 优先使用id，如果没有则使用classId
+            semester: course.semester,
+            courseName: course.courseName,
+            className: course.className,
+            inviteCode: course.invitationCode || '',
+            inviteExpiry: course.expiryDate ?
+              this.formatDate(course.expiryDate) : '',
+            studentCount: course.studentCount || 0,
+            // 确保 students 数组不为 null/undefined
+            students: course.students || []
+          }));
+
+          // 调试：打印处理后的第一个课程
+          if (this.myCourses.length > 0) {
+            console.log('处理后第一个课程:', this.myCourses[0]);
+          }
+        } else {
+          this.$message.error(response.message || '加载课程失败');
+        }
+      } catch (error) {
+        console.error('加载课程失败:', error);
+        this.$message.error('网络错误，请检查后端服务是否启动');
+      } finally {
+        this.loading = false;
       }
     },
+
+    handleSearch() {
+      // 搜索功能已在computed中实现
+      console.log('搜索关键词:', this.searchQuery);
+    },
+
+    // 格式化日期
+    formatDate(dateStr) {
+      if (!dateStr) return '';
+      try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('zh-CN');
+      } catch (e) {
+        return dateStr;
+      }
+    },
+
+    // --- 邀请码逻辑 ---
+    async generateInviteCode(course) {
+      try {
+        const response = await generateInviteCode(course.id);
+        if (response.success && response.data) {
+          // 重新加载整个课程列表数据
+          await this.loadTeacherCourses();
+          this.$message.success('邀请码生成成功');
+        } else {
+          this.$message.error(response.message || '生成邀请码失败');
+        }
+      } catch (error) {
+        console.error('生成邀请码失败:', error);
+        this.$message.error('网络错误，请稍后重试');
+      }
+    },
+
     openInviteModal(course) {
-      this.currentCourse = course;
+      this.currentCourse = { ...course };
       this.showInviteModal = true;
     },
+
     closeInviteModal() {
       this.showInviteModal = false;
       this.currentCourse = null;
     },
 
-    // --- 成员管理逻辑 (2.2.3) ---
-    openMemberModal(course) {
-      this.currentCourse = course;
-      this.studentSearch = '';
-      this.showMemberModal = true;
+    // --- 成员管理逻辑 ---
+    async openMemberModal(course) {
+      this.loading = true;
+      try {
+        // 获取班级学生详细信息
+        const response = await getClassStudentDetails(course.id);
+        if (response.success && response.data) {
+          this.currentCourse = {
+            ...course,
+            students: response.data
+          };
+          this.studentSearch = '';
+          this.showMemberModal = true;
+        } else {
+          this.$message.error(response.message || '获取学生列表失败');
+        }
+      } catch (error) {
+        console.error('获取学生详情失败:', error);
+        this.$message.error('网络错误，请稍后重试');
+      } finally {
+        this.loading = false;
+      }
     },
+
     closeMemberModal() {
       this.showMemberModal = false;
       this.currentCourse = null;
+      this.studentSearch = '';
     },
-    removeStudent(student) {
-      if (confirm(`确定要将学生 ${student.name} (${student.id}) 移出班级吗？\n此操作不可撤销！`)) {
-        this.currentCourse.students = this.currentCourse.students.filter(s => s.id !== student.id);
+
+    // 移除学生
+    async removeStudent(student) {
+      try {
+        this.$confirm(`确定要将学生 ${student.name} (${student.id}) 移出班级吗？`, '确认移除', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }).then(async () => {
+          const response = await removeStudentFromClass(this.currentCourse.id, student.id);
+          if (response.success) {
+            // 重新加载整个课程列表数据，确保数据一致性
+            await this.loadTeacherCourses();
+            this.$message.success('移除学生成功');
+          } else {
+            this.$message.error(response.message || '移除学生失败');
+          }
+        }).catch(() => {
+          // 用户取消操作
+        });
+      } catch (error) {
+        console.error('移除学生失败:', error);
+        this.$message.error('网络错误，请稍后重试');
       }
     }
   }
@@ -257,85 +320,453 @@ export default {
 
 <style scoped>
 /* 样式体系复用 Admin 风格 */
-.manage-container { padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+.manage-container {
+  padding: 0;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
 
 /* 顶部 */
-.action-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); }
-.title-section h2 { margin: 0; font-size: 20px; color: #333; }
-.subtitle { margin: 5px 0 0; font-size: 13px; color: #999; }
-.search-box { display: flex; }
-.search-box input { padding: 8px 12px; border: 1px solid #dcdfe6; border-right: none; border-radius: 4px 0 0 4px; outline: none; font-size: 14px; width: 220px; }
-.search-box input:focus { border-color: #1890ff; }
-.btn-search { border-radius: 0 4px 4px 0; background: #f5f7fa; color: #606266; border: 1px solid #dcdfe6; border-left: none; cursor: pointer; padding: 8px 12px; }
-.btn-search:hover { background: #e6f7ff; color: #1890ff; }
+.action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+.title-section h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.subtitle {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: #999;
+}
+
+.search-box {
+  display: flex;
+}
+
+.search-box input {
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+  outline: none;
+  font-size: 14px;
+  width: 220px;
+}
+
+.search-box input:focus {
+  border-color: #1890ff;
+}
+
+.btn-search {
+  border-radius: 0 4px 4px 0;
+  background: #f5f7fa;
+  color: #606266;
+  border: 1px solid #dcdfe6;
+  border-left: none;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.btn-search:hover {
+  background: #e6f7ff;
+  color: #1890ff;
+}
 
 /* 表格卡片 */
-.table-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); overflow: hidden; }
-.data-table { width: 100%; border-collapse: collapse; text-align: left; }
-.data-table th { background: #fafafa; padding: 16px; color: #333; font-weight: 600; border-bottom: 1px solid #ebeef5; }
-.data-table td { padding: 16px; border-bottom: 1px solid #ebeef5; color: #606266; font-size: 14px; vertical-align: middle; }
-.data-table tr:hover { background-color: #f5f7fa; }
+.table-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.data-table th {
+  background: #fafafa;
+  padding: 16px;
+  color: #333;
+  font-weight: 600;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.data-table td {
+  padding: 16px;
+  border-bottom: 1px solid #ebeef5;
+  color: #606266;
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+.data-table tr:hover {
+  background-color: #f5f7fa;
+}
 
 /* 列样式 */
-.term-tag { background: #f0f5ff; color: #2f54eb; border: 1px solid #adc6ff; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: monospace; }
-.course-name { font-weight: bold; color: #333; font-size: 15px; }
-.class-name { color: #606266; }
+.term-tag {
+  background: #f0f5ff;
+  color: #2f54eb;
+  border: 1px solid #adc6ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.course-name {
+  font-weight: bold;
+  color: #333;
+  font-size: 15px;
+}
+
+.class-name {
+  color: #606266;
+}
 
 /* 进度条 */
-.capacity-box { width: 100px; font-size: 12px; }
-.progress-bar { width: 100%; height: 6px; background: #f5f5f5; border-radius: 3px; margin-top: 4px; overflow: hidden; }
-.progress-fill { height: 100%; background: #52c41a; }
+.capacity-box {
+  width: 100px;
+  font-size: 12px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #f5f5f5;
+  border-radius: 3px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #52c41a;
+}
 
 /* 邀请码展示 */
-.code-display { display: inline-flex; align-items: center; background: #fff7e6; border: 1px solid #ffd591; padding: 4px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
-.code-display:hover { transform: scale(1.05); }
-.code-text { font-family: monospace; font-weight: bold; color: #fa8c16; margin-right: 5px; letter-spacing: 1px; }
-.code-icon { font-size: 12px; }
+.code-display {
+  display: inline-flex;
+  align-items: center;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.code-display:hover {
+  transform: scale(1.05);
+}
+
+.code-text {
+  font-family: monospace;
+  font-weight: bold;
+  color: #fa8c16;
+  margin-right: 5px;
+  letter-spacing: 1px;
+}
+
+.code-icon {
+  font-size: 12px;
+}
 
 /* 操作按钮 */
-.action-col { display: flex; gap: 10px; }
-.btn-text { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0; }
-.btn-edit { color: #1890ff; } .btn-edit:hover { text-decoration: underline; }
-.btn-primary { color: #1890ff; } .btn-primary:hover { text-decoration: underline; }
-.btn-danger { color: #ff4d4f; } .btn-danger:hover { text-decoration: underline; }
+.action-col {
+  display: flex;
+  gap: 10px;
+}
 
-.empty-state { text-align: center; padding: 40px; color: #999; }
+.btn-text {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+
+.btn-edit {
+  color: #1890ff;
+}
+
+.btn-edit:hover {
+  text-decoration: underline;
+}
+
+.btn-primary {
+  color: #1890ff;
+}
+
+.btn-primary:hover {
+  text-decoration: underline;
+}
+
+.btn-danger {
+  color: #ff4d4f;
+}
+
+.btn-danger:hover {
+  text-decoration: underline;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+}
 
 /* --- 弹窗通用 --- */
-.modal-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center; }
-.modal-box { background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: modalFadeIn 0.3s ease; display: flex; flex-direction: column; }
-.invite-modal { width: 400px; }
-.wide-modal { width: 700px; max-height: 80vh; }
-@keyframes modalFadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
 
-.modal-header { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-.modal-header h3 { margin: 0; font-size: 16px; color: #333; }
-.close-btn { font-size: 20px; cursor: pointer; color: #999; }
-.close-btn:hover { color: #333; }
+.modal-box {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: modalFadeIn 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.invite-modal {
+  width: 400px;
+}
+
+.wide-modal {
+  width: 700px;
+  max-height: 80vh;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.close-btn {
+  font-size: 20px;
+  cursor: pointer;
+  color: #999;
+}
+
+.close-btn:hover {
+  color: #333;
+}
 
 /* 邀请码弹窗内容 */
-.modal-body { padding: 25px; }
-.align-center { text-align: center; }
-.invite-course-title { font-size: 14px; color: #666; margin-bottom: 15px; }
-.big-code { font-size: 40px; font-weight: bold; color: #1890ff; letter-spacing: 4px; font-family: monospace; margin-bottom: 10px; background: #f0f5ff; padding: 10px; border-radius: 8px; border: 2px dashed #adc6ff; display: inline-block; }
-.invite-expiry { color: #ff4d4f; font-size: 13px; margin-bottom: 20px; }
-.hint { font-size: 12px; color: #999; margin-bottom: 20px; }
-.btn-refresh { padding: 8px 20px; font-size: 13px; border-radius: 4px; border: none; background: #1890ff; color: white; cursor: pointer; }
-.btn-refresh:hover { background: #40a9ff; }
+.modal-body {
+  padding: 25px;
+}
+
+.align-center {
+  text-align: center;
+}
+
+.invite-course-title {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 15px;
+}
+
+.big-code {
+  font-size: 40px;
+  font-weight: bold;
+  color: #1890ff;
+  letter-spacing: 4px;
+  font-family: monospace;
+  margin-bottom: 10px;
+  background: #f0f5ff;
+  padding: 10px;
+  border-radius: 8px;
+  border: 2px dashed #adc6ff;
+  display: inline-block;
+}
+
+.invite-expiry {
+  color: #ff4d4f;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.hint {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 20px;
+}
+
+.btn-refresh {
+  padding: 8px 20px;
+  font-size: 13px;
+  border-radius: 4px;
+  border: none;
+  background: #1890ff;
+  color: white;
+  cursor: pointer;
+}
+
+.btn-refresh:hover {
+  background: #40a9ff;
+}
 
 /* 成员管理弹窗内容 */
-.member-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-.mini-search { padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px; width: 200px; font-size: 13px; }
-.member-list-container { max-height: 400px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 4px; }
-.member-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.member-table th { background: #f9fafc; padding: 10px; text-align: left; color: #606266; position: sticky; top: 0; }
-.member-table td { padding: 10px; border-bottom: 1px solid #f0f0f0; color: #333; }
-.mono { font-family: monospace; }
-.text-center { text-align: center; color: #999; padding: 20px; }
+.member-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.mini-search {
+  padding: 6px 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  width: 200px;
+  font-size: 13px;
+}
+
+.member-list-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+
+.member-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.member-table th {
+  background: #f9fafc;
+  padding: 10px;
+  text-align: left;
+  color: #606266;
+  position: sticky;
+  top: 0;
+}
+
+.member-table td {
+  padding: 10px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #333;
+}
+
+.mono {
+  font-family: monospace;
+}
+
+.text-center {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+}
 
 /* 响应式 */
 @media (max-width: 768px) {
-  .wide-modal { width: 95%; }
-  .table-card { overflow-x: auto; }
+  .wide-modal {
+    width: 95%;
+  }
+
+  .table-card {
+    overflow-x: auto;
+  }
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #1890ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* 刷新按钮 */
+.btn-refresh {
+  margin-left: 10px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  color: #606266;
+  cursor: pointer;
+}
+
+.btn-refresh:hover {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>
