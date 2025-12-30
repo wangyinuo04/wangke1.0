@@ -53,7 +53,6 @@
                 <th width="140">
                   <div class="th-content">
                     <span>参考答案</span>
-                    
                     <span 
                       v-if="['单选', '多选', '判断'].includes(type)" 
                       class="header-eye-btn"
@@ -61,9 +60,9 @@
                       @click="toggleGroupVisibility(type)"
                       title="点击统一显示/隐藏本组答案"
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M2 12s5-8 10-8 10 8 10 8" />
-                        <circle cx="12" cy="12" r="3" />
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 14 C 6 6, 18 6, 21 14"></path>
+                        <circle cx="12" cy="14" r="3"></circle>
                       </svg>
                     </span>
                   </div>
@@ -90,9 +89,9 @@
                       :class="{ 'active': visibleAnswers[q.id] }"
                       @click="toggleAnswerVisibility(q.id)"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M2 12s5-8 10-8 10 8 10 8" />
-                        <circle cx="12" cy="12" r="3" />
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 14 C 6 6, 18 6, 21 14"></path>
+                        <circle cx="12" cy="14" r="3"></circle>
                       </svg>
                     </span>
                   </div>
@@ -326,26 +325,64 @@
     </div>
 
     <div class="modal-mask" v-if="showPaperModal">
-      <div class="modal-box">
-        <div class="modal-header"><h3>组建新试卷</h3><span class="close-btn" @click="closePaperModal">×</span></div>
-        <div class="modal-body">
+      <div class="modal-box wide-modal-xl">
+        <div class="modal-header">
+          <h3>组建新试卷</h3>
+          <span class="close-btn" @click="closePaperModal">×</span>
+        </div>
+        
+        <div class="modal-body paper-modal-body">
           <div class="form-group">
-            <label>试卷标题</label>
+            <label>试卷标题 <span class="text-red">*</span></label>
             <input type="text" v-model="paperForm.title" placeholder="例：期中测试A卷" required>
           </div>
-          <div class="form-group">
-            <label>勾选题目 (当前已选总分: {{ paperTotalScore }}分)</label>
-            <div class="question-selector">
-              <div v-for="q in questions" :key="q.id" class="q-item">
-                <input type="checkbox" :value="q.id" v-model="paperForm.questionIds">
-                <span>[<small>{{ q.type }}</small>] {{ q.stem }} ({{ q.score }}分)</span>
+          
+          <div class="form-group full-height-group">
+            <label>
+              勾选题目 
+              (当前已选总分: <span class="score-green">{{ paperTotalScore }}</span> 分
+              <span class="separator">|</span>
+              共选中 <span class="score-blue">{{ paperForm.questionIds.length }}</span> 题)
+            </label>
+            
+            <div class="question-selector-large">
+              <div v-for="type in questionTypes" :key="type" class="selector-group">
+                <div class="group-title">
+                  {{ type }}题
+                  <span class="small-count" v-if="getSelectedCountByType(type) > 0">
+                    (已选 {{ getSelectedCountByType(type) }} 题)
+                  </span>
+                </div>
+                
+                <div v-if="getQuestionsByType(type).length === 0" class="empty-group">
+                  暂无{{ type }}题
+                </div>
+
+                <div 
+                  v-for="q in getQuestionsByType(type)" 
+                  :key="q.id" 
+                  class="q-item-row"
+                  :class="{ 'selected': paperForm.questionIds.includes(q.id) }"
+                >
+                  <div class="check-col">
+                    <input type="checkbox" :value="q.id" v-model="paperForm.questionIds">
+                  </div>
+                  <div class="content-col">
+                    <span class="q-text">{{ q.stem }}</span>
+                  </div>
+                  <div class="info-col">
+                    <span class="score-tag">{{ q.score }}分</span>
+                    <span :class="getDifficultyClass(q.difficulty)">{{ q.difficulty }}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" @click="closePaperModal">取消</button>
-            <button class="btn btn-primary" @click="savePaper">完成组卷</button>
-          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closePaperModal">取消</button>
+          <button class="btn btn-primary" @click="savePaper">完成组卷</button>
         </div>
       </div>
     </div>
@@ -452,13 +489,12 @@ export default {
   data() {
     return {
       currentTab: 'bank', 
-      questionTypes: ['单选', '多选', '判断', '简答'],
+      questionTypes: ['单选', '多选', '判断', '简答'], 
 
-      // --- 题库数据 ---
       showQuestionModal: false,
       showAnswerDetailModal: false,
       currentDetailQuestion: {},
-      visibleAnswers: {}, // 控制答案可见性 { id: boolean }
+      visibleAnswers: {},
 
       questions: [
         { id: 1, type: '单选', stem: '软件生命周期中时间最长的阶段是？', score: 2, difficulty: '低', analysis: 'D. 维护阶段' },
@@ -470,59 +506,28 @@ export default {
       ],
       qForm: { id: null, type: '单选', stem: '', score: 5, difficulty: '中', analysis: '', options: '' },
 
-      // --- 试卷数据 ---
       showPaperModal: false,
       papers: [
         { id: 101, title: '第一章单元测试', totalScore: 14, questionIds: [1, 2, 3] }
       ],
       paperForm: { title: '', questionIds: [] },
 
-      // --- 考试数据 ---
       showExamModal: false,
       exams: [
         { id: 201, title: '2025期中考试', paperId: 101, startTime: '2025-11-10 09:00', duration: 90 }
       ],
       examForm: { title: '', paperId: '', startTime: '', duration: 90 },
 
-      // --- 阅卷数据 ---
       selectedExamId: '',
       showGradingModal: false,
       currentStudent: null,
       gradingScore: 0,
       
       mockSubmissions: [
-        { 
-          studentId: 'S202301', 
-          name: '张三', 
-          objScore: 38, 
-          subjScore: null, 
-          answerContent: '软件工程是指导计算机软件开发和维护的一门工程学科。', 
-          answerImg: null
-        }, 
-        { 
-          studentId: 'S202302', 
-          name: '李四', 
-          objScore: 40, 
-          subjScore: 15, 
-          answerContent: '已完成批改。',
-          answerImg: null
-        },
-        { 
-          studentId: 'S202303', 
-          name: '王五', 
-          objScore: 30, 
-          subjScore: null,
-          answerContent: '老师，我的答案写在纸上了，请看图：',
-          answerImg: 'https://via.placeholder.com/400x300?text=Student+Handwriting+Answer' 
-        },
-        { 
-          studentId: 'S202304', 
-          name: '赵六', 
-          objScore: 42, 
-          subjScore: 18, 
-          answerContent: '略。',
-          answerImg: null
-        }
+        { studentId: 'S202301', name: '张三', objScore: 38, subjScore: null, answerContent: '软件工程是指导计算机软件开发和维护的一门工程学科。', answerImg: null }, 
+        { studentId: 'S202302', name: '李四', objScore: 40, subjScore: 15, answerContent: '已完成批改。', answerImg: null },
+        { studentId: 'S202303', name: '王五', objScore: 30, subjScore: null, answerContent: '老师，我的答案写在纸上了，请看图：', answerImg: 'https://via.placeholder.com/400x300?text=Student+Handwriting+Answer' },
+        { studentId: 'S202304', name: '赵六', objScore: 42, subjScore: 18, answerContent: '略。', answerImg: null }
       ]
     }
   },
@@ -546,6 +551,10 @@ export default {
   },
   methods: {
     getQuestionsByType(type) { return this.questions.filter(q => q.type === type); },
+    // 修改点：新增获取该类型已选数量的方法
+    getSelectedCountByType(type) {
+      return this.questions.filter(q => q.type === type && this.paperForm.questionIds.includes(q.id)).length;
+    },
     getDifficultyClass(d) { return { '低': 'text-green', '中': 'text-orange', '高': 'text-red' }[d]; },
     getPaperTitle(id) { const p = this.papers.find(x => x.id === id); return p ? p.title : '未知试卷'; },
     
@@ -569,22 +578,18 @@ export default {
 
     previewImage(url) { window.open(url, '_blank'); },
 
-    // --- 批量显示/隐藏判断 ---
     isAllVisible(type) {
       const qs = this.getQuestionsByType(type);
       if (qs.length === 0) return false;
-      // 只要有一个没显示，就算“未全部显示”
       return qs.every(q => this.visibleAnswers[q.id]);
     },
-    // --- 批量切换 ---
     toggleGroupVisibility(type) {
       const qs = this.getQuestionsByType(type);
-      const targetState = !this.isAllVisible(type); // 如果全显了，就全隐；否则全显
+      const targetState = !this.isAllVisible(type);
       qs.forEach(q => {
         this.$set(this.visibleAnswers, q.id, targetState);
       });
     },
-    // --- 单个切换 ---
     toggleAnswerVisibility(id) {
       this.$set(this.visibleAnswers, id, !this.visibleAnswers[id]);
     },
@@ -637,7 +642,7 @@ export default {
 </script>
 
 <style scoped>
-/* 保持原有基础布局 */
+/* 保持原有基础布局 (通用样式部分省略重复，直接使用你现有的) */
 .manage-container { padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; height: 100%; display: flex; flex-direction: column; }
 .nav-tabs { display: flex; background: #fff; padding: 0 20px; border-bottom: 1px solid #e4e7ed; gap: 30px; }
 .tab-item { padding: 15px 5px; cursor: pointer; font-size: 15px; color: #606266; font-weight: 500; border-bottom: 3px solid transparent; transition: all 0.3s; }
@@ -661,45 +666,22 @@ export default {
 .tag-type { background: #f0f5ff; color: #2f54eb; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 .empty-row { text-align: center; color: #ccc; padding: 20px !important; }
 
-/* 答案列交互样式 */
+/* 答案交互 */
 .th-content { display: flex; align-items: center; gap: 8px; }
 .answer-mask-box { display: flex; align-items: center; gap: 10px; font-family: monospace; }
 .answer-text.masked { letter-spacing: 2px; color: #ccc; }
-
-/* 眼睛图标按钮 (表头 & 单元格共用) */
-.header-eye-btn, .eye-btn {
-  cursor: pointer;
-  color: #bbb;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  border-radius: 50%;
-  transition: all 0.2s;
-}
-.header-eye-btn:hover, .eye-btn:hover {
-  background-color: #f0f7ff;
-  color: #1890ff;
-}
-/* 激活状态(已显示)可以给个深色 */
-.header-eye-btn.active, .eye-btn.active {
-  color: #555;
-}
-
+.header-eye-btn, .eye-btn { cursor: pointer; color: #bbb; display: inline-flex; align-items: center; justify-content: center; padding: 4px; border-radius: 50%; transition: all 0.2s; }
+.header-eye-btn:hover, .eye-btn:hover { background-color: #f0f7ff; color: #1890ff; }
+.header-eye-btn.active, .eye-btn.active { color: #555; }
 .btn-view-detail { color: #1890ff; font-weight: 500; }
 .btn-view-detail:hover { text-decoration: underline; }
 
-/* 详情弹窗文本 */
+/* 详情文本 */
 .static-text { background: #f5f7fa; padding: 10px; border-radius: 4px; border: 1px solid #e4e7ed; line-height: 1.6; color: #333; }
 .highlight-box { background: #f6ffed; border-color: #b7eb8f; color: #333; }
 
-/* 难度颜色 */
-.text-green { color: #52c41a; }
-.text-orange { color: #fa8c16; }
-.text-red { color: #f5222d; }
-.text-gray { color: #ccc; }
-
-/* 状态标签 */
+/* 通用颜色/状态 */
+.text-green { color: #52c41a; } .text-orange { color: #fa8c16; } .text-red { color: #f5222d; } .text-gray { color: #ccc; }
 .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; border: 1px solid #ddd; }
 .status-gray { background: #f4f4f5; color: #909399; border-color: #e9e9eb; }
 .status-active { background: #e6f7ff; color: #1890ff; border-color: #91d5ff; }
@@ -721,9 +703,9 @@ export default {
 .stat-box:last-child { border-right: none; }
 .stat-box .label { font-size: 13px; color: #909399; }
 .stat-box .value { font-size: 24px; font-weight: bold; color: #333; margin-top: 5px; }
-.stat-box .value.highlight { color: #1890ff; }
+.stat-select select { padding: 8px; border-radius: 4px; border: 1px solid #dcdfe6; min-width: 200px; }
 
-/* 待批改任务队列 */
+/* 批改任务 */
 .grading-task-section { background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e6f7ff; box-shadow: 0 2px 12px rgba(24, 144, 255, 0.05); }
 .task-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 15px; }
 .task-header h4 { margin: 0; color: #333; }
@@ -734,32 +716,95 @@ export default {
 .task-info { text-align: center; display: flex; flex-direction: column; }
 .student-name { font-weight: bold; font-size: 14px; }
 .student-id { font-size: 12px; color: #999; }
-.btn-sm { padding: 4px 12px; font-size: 12px; width: 100%; }
 
 .score-green { color: #52c41a; font-weight: bold; }
+.score-blue { color: #1890ff; font-weight: bold; margin: 0 3px; }
 .score-total { font-size: 16px; color: #333; }
 .mono { font-family: monospace; }
-.stat-select select { padding: 8px; border-radius: 4px; border: 1px solid #dcdfe6; min-width: 200px; }
+.separator { color: #ddd; margin: 0 8px; font-weight: normal; }
 
 /* 弹窗通用 */
 .modal-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center; }
 .modal-box { background: white; width: 550px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: fade 0.3s; display: flex; flex-direction: column; max-height: 85vh; }
-.grading-modal { width: 700px; } 
 .modal-header { padding: 15px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
 .modal-header h3 { margin: 0; font-size: 16px; }
 .close-btn { font-size: 20px; cursor: pointer; color: #999; }
 .modal-body { padding: 20px; overflow-y: auto; }
 .modal-footer { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
 
-/* 表单元素 */
-.form-group { margin-bottom: 15px; }
-.form-row { display: flex; gap: 15px; }
-.form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 13px; }
-.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box; }
-.question-selector { max-height: 200px; overflow-y: auto; border: 1px solid #dcdfe6; padding: 10px; border-radius: 4px; }
-.q-item { display: flex; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+/* ---------------------- 重点修改：大号试卷组建弹窗样式 ---------------------- */
+.wide-modal-xl { 
+  width: 1000px; 
+  height: 85vh; 
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+}
 
-/* 批改弹窗样式 */
+.paper-modal-body {
+  flex: 1;
+  overflow-y: hidden; 
+  display: flex;
+  flex-direction: column;
+}
+
+.full-height-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; 
+}
+
+.question-selector-large {
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  flex: 1; 
+  overflow-y: auto; 
+  padding: 10px 15px;
+  background-color: #fafafa;
+}
+
+.selector-group { margin-bottom: 20px; }
+.group-title {
+  font-weight: bold;
+  color: #1890ff;
+  border-bottom: 2px solid #e6f7ff;
+  padding-bottom: 5px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.small-count {
+  font-size: 12px;
+  color: #666;
+  font-weight: normal;
+  margin-left: 8px;
+}
+
+.q-item-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 10px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.q-item-row:hover { background-color: #f0f9ff; border-color: #b3e19d; }
+.q-item-row.selected { background-color: #e6f7ff; border-color: #1890ff; }
+
+/* 三列布局 */
+.check-col { width: 30px; display: flex; align-items: center; padding-top: 2px; }
+.content-col { flex: 1; font-size: 13px; color: #333; line-height: 1.5; padding-right: 15px; }
+.info-col { width: 100px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; }
+
+.q-text { display: block; word-break: break-all; }
+.score-tag { background: #f4f4f5; padding: 1px 5px; border-radius: 3px; color: #666; }
+.empty-group { font-size: 12px; color: #999; padding-left: 10px; font-style: italic; margin-bottom: 10px; }
+
+/* 批改弹窗特殊样式 */
+.grading-modal { width: 700px; } 
 .student-bar { background: #f0f7ff; padding: 10px 15px; border-radius: 4px; margin-bottom: 15px; display: flex; justify-content: space-between; font-size: 14px; border: 1px solid #bae7ff; }
 .tag-auto { color: #1890ff; font-weight: bold; }
 .question-review-card { border: 1px solid #eee; border-radius: 6px; padding: 15px; }
@@ -769,17 +814,20 @@ export default {
 .answer-block .content { padding: 10px; border-radius: 4px; font-size: 14px; line-height: 1.6; }
 .answer-block.student .content { background: #f5f7fa; color: #333; border: 1px solid #e4e7ed; }
 .answer-block.ref .content { background: #f6ffed; border: 1px solid #b7eb8f; }
-
-/* 图片答案样式 */
 .img-content { padding: 10px; border: 1px dashed #dcdfe6; border-radius: 4px; background: #fafafa; }
 .img-hint { font-size: 12px; color: #999; margin-bottom: 5px; }
 .student-img-preview { max-width: 100%; max-height: 200px; border-radius: 4px; border: 1px solid #eee; cursor: zoom-in; transition: transform 0.2s; }
 .student-img-preview:hover { transform: scale(1.02); }
 .text-content { margin-bottom: 10px; }
-
 .grading-input-area { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 15px; border-top: 1px dashed #eee; }
 .score-input-lg { width: 80px !important; font-size: 18px; font-weight: bold; text-align: center; color: #1890ff; border: 2px solid #1890ff !important; }
 .suffix { font-size: 14px; color: #666; }
+
+/* 表单元素基础 (保留) */
+.form-group { margin-bottom: 15px; }
+.form-row { display: flex; gap: 15px; }
+.form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 13px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box; }
 
 /* 按钮通用 */
 .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }

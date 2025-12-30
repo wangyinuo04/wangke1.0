@@ -5,6 +5,14 @@
         <h2>教学资源管理</h2>
         <p class="subtitle">构建课程章节目录，上传与维护教学课件</p>
       </div>
+      <div class="class-selector">
+        <select v-model="selectedClassId" @change="selectClass(selectedClassId)" class="class-select">
+          <option value="" disabled>请选择教学班</option>
+          <option v-for="cls in teacherClasses" :key="cls.id" :value="cls.id">
+            {{ cls.className }} ({{ cls.courseName }}) - {{ cls.semester }}
+          </option>
+        </select>
+      </div>
     </div>
 
     <div class="content-layout">
@@ -48,7 +56,7 @@
               </ul>
             </li>
           </ul>
-          <div v-if="chapters.length === 0" class="empty-tree">暂无章节，请添加</div>
+          <div v-if="chapters.length === 0" class="empty-tree">请先选择教学班</div>
         </div>
       </div>
 
@@ -71,26 +79,32 @@
               <th>文件大小</th>
               <th>允许下载</th>
               <th>上传时间</th>
-              <th width="150">操作</th>
+              <th width="180">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="res in currentResources" :key="res.id">
-              <td class="type-icon">{{ getFileIcon(res.type) }}</td>
+            <tr v-for="res in currentResources" :key="res.resourceId">
+              <td class="type-icon">{{ getFileIcon(res.resourceType) }}</td>
               <td>
-                <div class="res-title">{{ res.title }}</div>
-                <div class="res-path">{{ res.filePath }}</div>
+                <div class="res-title">{{ res.resourceName }}</div>
+                <div class="res-path">{{ getResourceTypeText(res.resourceType) }}</div>
               </td>
-              <td class="size-col">{{ res.size }}</td>
+              <td class="size-col">{{ res.formattedSize || res.fileSize }}</td>
               <td>
                 <span :class="res.allowDownload ? 'tag-success' : 'tag-warn'">
                   {{ res.allowDownload ? '允许' : '禁止' }}
                 </span>
               </td>
-              <td class="time-col">{{ res.uploadTime }}</td>
-              <td class="action-col">
-                <button class="btn-text btn-edit" @click="editResource(res)">编辑</button>
-                <button class="btn-text btn-danger" @click="deleteResource(res.id)">删除</button>
+              <td class="time-col">{{ formatTime(res.formattedUploadTime || res.uploadTime) }}</td>
+              <td>
+                <div class="action-col">
+                  <button class="btn-text btn-download" @click="downloadResource(res.resourceId, res.resourceName)" 
+                          :disabled="!res.allowDownload" title="下载">
+                    下载
+                  </button>
+                  <button class="btn-text btn-edit" @click="editResource(res)">编辑</button>
+                  <button class="btn-text btn-danger" @click="deleteResource(res.resourceId)">删除</button>
+                </div>
               </td>
             </tr>
             <tr v-if="currentResources.length === 0">
@@ -117,11 +131,11 @@
             </div>
             <div class="form-group">
               <label>章节名称 <span class="required">*</span></label>
-              <input type="text" v-model="chapterForm.name" placeholder="请输入章节名称" required>
+              <input type="text" v-model="chapterForm.chapterName" placeholder="请输入章节名称" required>
             </div>
             <div class="form-group">
               <label>排序号</label>
-              <input type="number" v-model.number="chapterForm.sortOrder" placeholder="数字越小越靠前">
+              <input type="number" v-model.number="chapterForm.sortOrder" placeholder="数字越小越靠前" min="1">
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" @click="closeChapterModal">取消</button>
@@ -146,18 +160,18 @@
             </div>
             <div class="form-group">
               <label>资源标题 <span class="required">*</span></label>
-              <input type="text" v-model="resourceForm.title" placeholder="请输入资源显示标题" required>
+              <input type="text" v-model="resourceForm.resourceName" placeholder="请输入资源显示标题" required>
             </div>
             
             <div class="form-row">
               <div class="form-group">
                 <label>资源类型 <span class="required">*</span></label>
-                <select v-model="resourceForm.type" required>
+                <select v-model="resourceForm.resourceType" required>
                   <option value="PPT">PPT 演示文稿</option>
                   <option value="PDF">PDF 文档</option>
-                  <option value="Video">Video 教学视频</option>
+                  <option value="视频">教学视频</option>
                   <option value="Word">Word 文档</option>
-                  <option value="Audio">Audio 音频</option>
+                  <option value="音频">音频文件</option>
                 </select>
               </div>
               <div class="form-group">
@@ -170,18 +184,50 @@
             </div>
 
             <div class="form-group">
-              <label>附件文件 <span class="required">*</span></label>
-              <div class="file-upload-box">
-                <input type="text" v-model="resourceForm.filePath" placeholder="选择文件 (模拟路径)" readonly>
-                <button type="button" class="btn btn-secondary btn-sm" @click="mockSelectFile">选择文件</button>
+              <label>附件文件 <span class="required" v-if="!isEditResource">*</span></label>
+              <div class="file-upload-area">
+                <!-- 编辑模式：显示现有文件信息 -->
+                <div v-if="isEditResource && resourceForm.filePath" class="file-info">
+                  <div class="file-info-item">
+                    <span class="file-icon">📄</span>
+                    <div class="file-details">
+                      <div class="file-name">{{ resourceForm.resourceName }}</div>
+                      <div class="file-meta">{{ resourceForm.fileSize }} · {{ resourceForm.filePath }}</div>
+                    </div>
+                  </div>
+                  <p class="hint">注：编辑模式下不能修改文件，如需更换文件请删除后重新上传。</p>
+                </div>
+                
+                <!-- 新增模式：显示文件上传框 -->
+                <div v-else class="file-upload-box">
+                  <input 
+                    type="file" 
+                    @change="handleFileSelect" 
+                    :disabled="uploading" 
+                    accept=".pdf,.ppt,.pptx,.doc,.docx,.txt,.mp4,.avi,.mov,.mp3,.wav,.jpg,.jpeg,.png"
+                    ref="fileInput"
+                  >
+                  <div v-if="resourceForm.file" class="selected-file">
+                    <span class="file-icon">📎</span>
+                    <span class="file-name">{{ resourceForm.file.name }}</span>
+                    <span class="file-size">({{ resourceForm.fileSize }})</span>
+                  </div>
+                </div>
               </div>
-              <p class="hint" v-if="resourceForm.size">文件大小: {{ resourceForm.size }}</p>
+              <p class="hint" v-if="!isEditResource">支持 PDF, PPT, Word, 视频, 音频等格式，最大100MB</p>
+            </div>
+
+            <div v-if="uploading" class="upload-progress">
+              <div class="progress-bar">
+                <div class="progress" :style="{ width: uploadProgress + '%' }"></div>
+              </div>
+              <span>上传中... {{ uploadProgress }}%</span>
             </div>
 
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="closeResourceModal">取消</button>
-              <button type="submit" class="btn btn-primary">
-                {{ isEditResource ? '保存修改' : '开始上传' }}
+              <button type="button" class="btn btn-secondary" @click="closeResourceModal" :disabled="uploading">取消</button>
+              <button type="submit" class="btn btn-primary" :disabled="uploading">
+                {{ uploading ? '上传中...' : (isEditResource ? '保存修改' : '开始上传') }}
               </button>
             </div>
           </form>
@@ -193,164 +239,538 @@
 </template>
 
 <script>
+import { 
+  getChapterTree, 
+  addChapter, 
+  updateChapter, 
+  deleteChapter,
+  getResourcesByChapter,
+  uploadResource,
+  updateResource,
+  deleteResource,
+  downloadResource,
+  getTeacherClasses
+} from '@/api/resource'
+import { Message, MessageBox } from 'element-ui'
+
 export default {
   name: 'ResourceManage',
   data() {
     return {
       // --- 章节数据 ---
       currentChapterId: null,
+      currentClassId: null, // 当前教学班ID
       showChapterModal: false,
       isEditChapter: false,
-      chapterForm: { id: null, name: '', parentId: null, sortOrder: 1 },
-      chapters: [
-        { id: 1, name: '第一章：软件工程概述', parentId: null, sortOrder: 1 },
-        { id: 2, name: '1.1 软件危机与软件工程', parentId: 1, sortOrder: 1 },
-        { id: 3, name: '1.2 软件生命周期模型', parentId: 1, sortOrder: 2 },
-        { id: 4, name: '第二章：可行性研究', parentId: null, sortOrder: 2 }
-      ],
+      chapterForm: { 
+        chapterId: null, 
+        chapterName: '', 
+        parentChapterId: null, 
+        sortOrder: 1,
+        classId: null 
+      },
+      chapters: [], // 从后端获取
+      teacherClasses: [], // 教师的教学班列表
+      selectedClassId: '', // 下拉框选中的教学班ID
 
       // --- 资源数据 ---
       showResourceModal: false,
       isEditResource: false,
-      resourceForm: { id: null, title: '', type: 'PPT', filePath: '', size: '', allowDownload: true },
-      allResources: [
-        { id: 101, chapterId: 2, title: '第一章教学课件.pptx', type: 'PPT', filePath: '/uploads/ch1_slides.pptx', size: '2.5MB', allowDownload: true, uploadTime: '2025-08-20' },
-        { id: 102, chapterId: 2, title: '软件危机案例分析.pdf', type: 'PDF', filePath: '/uploads/case_study.pdf', size: '1.2MB', allowDownload: false, uploadTime: '2025-08-21' },
-        { id: 103, chapterId: 3, title: '瀑布模型讲解视频.mp4', type: 'Video', filePath: '/uploads/waterfall_model.mp4', size: '45MB', allowDownload: true, uploadTime: '2025-08-25' }
-      ]
+      resourceForm: { 
+        resourceId: null, 
+        resourceName: '', 
+        resourceType: 'PPT', 
+        file: null,
+        filePath: '', 
+        fileSize: null, 
+        allowDownload: true,
+        chapterId: null
+      },
+      allResources: [], // 从后端获取
+      uploading: false, // 上传状态
+      uploadProgress: 0 // 上传进度
     }
   },
   computed: {
     // 构建章节树（支持二级）
     chapterTree() {
-      const roots = this.chapters.filter(c => !c.parentId).sort((a,b) => a.sortOrder - b.sortOrder);
-      return roots.map(root => {
-        const children = this.chapters.filter(c => c.parentId === root.id).sort((a,b) => a.sortOrder - b.sortOrder);
-        return { ...root, children };
-      });
+      return this.chapters; // 现在直接从后端获取树形结构
     },
     // 当前选中章节名称
     currentChapterName() {
-      const ch = this.chapters.find(c => c.id === this.currentChapterId);
-      return ch ? ch.name : '未选择章节';
+      const findChapter = (tree, id) => {
+        for (let chapter of tree) {
+          if (chapter.id === id) {
+            return chapter.name;
+          }
+          if (chapter.children && chapter.children.length > 0) {
+            const found = findChapter(chapter.children, id);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      return findChapter(this.chapters, this.currentChapterId) || '未选择章节';
     },
     // 弹窗中显示的父章节名称
     parentChapterName() {
-      if (this.chapterForm.parentId) {
-        const p = this.chapters.find(c => c.id === this.chapterForm.parentId);
-        return p ? p.name : '未知';
-      }
-      return '根目录 (无父级)';
+      const findChapter = (tree, id) => {
+        for (let chapter of tree) {
+          if (chapter.id === id) {
+            return chapter.name;
+          }
+          if (chapter.children && chapter.children.length > 0) {
+            const found = findChapter(chapter.children, id);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      return this.chapterForm.parentChapterId 
+        ? (findChapter(this.chapters, this.chapterForm.parentChapterId) || '未知') 
+        : '根目录 (无父级)';
     },
     // 当前章节下的资源
     currentResources() {
-      if (!this.currentChapterId) return [];
-      return this.allResources.filter(r => r.chapterId === this.currentChapterId);
+      return this.allResources;
     }
   },
+  mounted() {
+    this.loadTeacherClasses();
+  },
   methods: {
-    // --- 章节操作 ---
-    selectChapter(chapter) {
-      this.currentChapterId = chapter.id;
+    // --- 加载数据 ---
+    async loadTeacherClasses() {
+      try {
+        // 从localStorage获取教师信息
+        const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+        if (userInfo.role === 'teacher' && userInfo.teacherId) {
+          const response = await getTeacherClasses(userInfo.teacherId);
+          if (response.success) {
+            this.teacherClasses = response.data || [];
+            if (this.teacherClasses.length > 0) {
+              // 默认选择第一个教学班
+              this.selectedClassId = this.teacherClasses[0].id;
+              this.loadChapters(this.selectedClassId);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('加载教学班列表失败:', error);
+        Message.error('加载教学班列表失败');
+      }
     },
-    openChapterModal(parent) {
+
+    // 选择教学班
+    async selectClass(classId) {
+      this.selectedClassId = classId;
+      this.currentChapterId = null;
+      this.allResources = [];
+      await this.loadChapters(classId);
+    },
+
+    // 加载章节树
+    async loadChapters(classId) {
+      try {
+        const response = await getChapterTree(classId);
+        if (response.success) {
+          this.chapters = response.data || [];
+          // 默认选中第一个章节
+          if (this.chapters.length > 0) {
+            this.selectChapter(this.chapters[0]);
+          }
+        } else {
+          Message.error(response.message || '加载章节失败');
+        }
+      } catch (error) {
+        console.error('加载章节失败:', error);
+        Message.error('加载章节失败');
+      }
+    },
+
+    // --- 章节操作 ---
+    async selectChapter(chapter) {
+      this.currentChapterId = chapter.id;
+      await this.loadResources(chapter.id);
+    },
+
+    async openChapterModal(parent) {
       this.isEditChapter = false;
       this.chapterForm = {
-        id: Date.now(),
-        name: '',
-        parentId: parent ? parent.id : null, // 传入父节点对象则添加子节点，否则添加根节点
-        sortOrder: 1
+        chapterId: null,
+        chapterName: '',
+        parentChapterId: parent ? parent.id : null,
+        sortOrder: 1,
+        classId: this.selectedClassId
       };
       this.showChapterModal = true;
     },
-    editChapter(chapter) {
+
+    async editChapter(chapter) {
       this.isEditChapter = true;
-      this.chapterForm = { ...chapter };
-      this.showChapterModal = true;
+      try {
+        this.chapterForm = {
+          chapterId: chapter.id,
+          chapterName: chapter.name,
+          parentChapterId: chapter.parentId,
+          sortOrder: chapter.sortOrder || 1,
+          classId: this.selectedClassId
+        };
+        this.showChapterModal = true;
+      } catch (error) {
+        console.error('编辑章节失败:', error);
+        Message.error('编辑章节失败');
+      }
     },
+
     closeChapterModal() {
       this.showChapterModal = false;
+      this.chapterForm = {
+        chapterId: null,
+        chapterName: '',
+        parentChapterId: null,
+        sortOrder: 1,
+        classId: null
+      };
     },
-    saveChapter() {
-      if (this.isEditChapter) {
-        const idx = this.chapters.findIndex(c => c.id === this.chapterForm.id);
-        if (idx !== -1) this.chapters.splice(idx, 1, this.chapterForm);
-      } else {
-        this.chapters.push(this.chapterForm);
+
+    async saveChapter() {
+      if (!this.chapterForm.chapterName.trim()) {
+        Message.error('请输入章节名称');
+        return;
       }
-      this.closeChapterModal();
+
+      try {
+        if (this.isEditChapter) {
+          const response = await updateChapter(this.chapterForm);
+          if (response.success) {
+            Message.success('更新章节成功');
+            await this.loadChapters(this.selectedClassId);
+          } else {
+            Message.error(response.message || '更新章节失败');
+          }
+        } else {
+          const response = await addChapter(this.chapterForm);
+          if (response.success) {
+            Message.success('添加章节成功');
+            await this.loadChapters(this.selectedClassId);
+          } else {
+            Message.error(response.message || '添加章节失败');
+          }
+        }
+        this.closeChapterModal();
+      } catch (error) {
+        console.error('保存章节失败:', error);
+        Message.error('保存章节失败');
+      }
     },
-    deleteChapter(id) {
-      if (confirm('确定删除该章节吗？如果有子章节或资源将一并删除！')) {
-        // 级联删除子章节
-        const idsToDelete = [id];
-        this.chapters.forEach(c => {
-          if (c.parentId === id) idsToDelete.push(c.id);
+
+    async deleteChapter(id) {
+      try {
+        await MessageBox.confirm('确定删除该章节吗？如果有子章节或资源将一并删除！', '确认删除', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
         });
-        
-        this.chapters = this.chapters.filter(c => !idsToDelete.includes(c.id));
-        // 删除关联资源
-        this.allResources = this.allResources.filter(r => !idsToDelete.includes(r.chapterId));
-        
-        if (this.currentChapterId === id) this.currentChapterId = null;
+
+        const response = await deleteChapter(id);
+        if (response.success) {
+          Message.success('删除章节成功');
+          // 重新加载章节
+          await this.loadChapters(this.selectedClassId);
+          if (this.currentChapterId === id) {
+            this.currentChapterId = null;
+            this.allResources = [];
+          }
+        } else {
+          Message.error(response.message || '删除章节失败');
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('删除章节失败:', error);
+          Message.error('删除章节失败');
+        }
       }
     },
 
     // --- 资源操作 ---
     getFileIcon(type) {
-      const map = { 'PPT': '📊', 'PDF': '📄', 'Video': '🎬', 'Word': '📝', 'Audio': '🎵' };
+      const map = { 
+        'PPT': '📊', 
+        'PDF': '📄', 
+        '视频': '🎬', 
+        'Word': '📝', 
+        '音频': '🎵',
+        'PDF文档': '📄',
+        'PPT演示文稿': '📊',
+        '教学视频': '🎬',
+        'Word文档': '📝',
+        '音频文件': '🎵'
+      };
       return map[type] || '📎';
     },
+
     openResourceModal() {
+      if (!this.currentChapterId) {
+        Message.warning('请先选择章节');
+        return;
+      }
+      
       this.isEditResource = false;
       this.resourceForm = { 
-        id: Date.now(), 
-        title: '', 
-        type: 'PPT', 
+        resourceId: null, 
+        resourceName: '', 
+        resourceType: 'PPT', 
+        file: null,
         filePath: '', 
-        size: '', 
-        allowDownload: true 
+        fileSize: null, 
+        allowDownload: true,
+        chapterId: this.currentChapterId
       };
       this.showResourceModal = true;
     },
-    mockSelectFile() {
-      // 模拟文件选择
-      const types = ['demo.pptx', 'guide.pdf', 'intro.mp4'];
-      const random = types[Math.floor(Math.random() * types.length)];
-      this.resourceForm.filePath = `C:\\fakepath\\${random}`;
-      this.resourceForm.size = (Math.random() * 10 + 1).toFixed(1) + ' MB';
-      // 自动填入标题
-      if (!this.resourceForm.title) this.resourceForm.title = random.split('.')[0];
+
+    handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // 检查文件大小 (限制为100MB)
+      const maxSize = 100 * 1024 * 1024; // 100MB
+      if (file.size > maxSize) {
+        Message.error('文件大小不能超过100MB');
+        event.target.value = '';
+        return;
+      }
+
+      // 检查文件类型
+      const allowedTypes = [
+        'application/pdf',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'video/mp4',
+        'video/avi',
+        'video/quicktime',
+        'audio/mpeg',
+        'audio/wav',
+        'text/plain',
+        'image/jpeg',
+        'image/png'
+      ];
+
+      if (!allowedTypes.includes(file.type) && !file.name.match(/\.(pdf|ppt|pptx|doc|docx|txt|mp4|avi|mov|mp3|wav|jpg|jpeg|png)$/i)) {
+        Message.error('不支持的文件类型');
+        event.target.value = '';
+        return;
+      }
+
+      this.resourceForm.file = file;
+      this.resourceForm.resourceName = file.name;
+      
+      // 设置文件大小显示
+      let sizeStr = '';
+      if (file.size < 1024) {
+        sizeStr = file.size + ' B';
+      } else if (file.size < 1024 * 1024) {
+        sizeStr = (file.size / 1024).toFixed(1) + ' KB';
+      } else if (file.size < 1024 * 1024 * 1024) {
+        sizeStr = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+      } else {
+        sizeStr = (file.size / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+      }
+      this.resourceForm.fileSize = sizeStr;
+
+      // 根据文件类型自动设置资源类型
+      if (file.name.match(/\.(ppt|pptx)$/i)) {
+        this.resourceForm.resourceType = 'PPT';
+      } else if (file.name.match(/\.(pdf)$/i)) {
+        this.resourceForm.resourceType = 'PDF';
+      } else if (file.name.match(/\.(doc|docx)$/i)) {
+        this.resourceForm.resourceType = 'Word';
+      } else if (file.name.match(/\.(mp4|avi|mov)$/i)) {
+        this.resourceForm.resourceType = '视频';
+      } else if (file.name.match(/\.(mp3|wav)$/i)) {
+        this.resourceForm.resourceType = '音频';
+      }
     },
-    editResource(res) {
+
+    async editResource(res) {
       this.isEditResource = true;
-      this.resourceForm = { ...res };
+      this.resourceForm = {
+        resourceId: res.resourceId,
+        resourceName: res.resourceName,
+        resourceType: res.resourceType,
+        file: null,
+        filePath: res.filePath,
+        fileSize: res.formattedSize || res.fileSize,
+        allowDownload: res.allowDownload,
+        chapterId: this.currentChapterId
+      };
       this.showResourceModal = true;
     },
+
     closeResourceModal() {
       this.showResourceModal = false;
-    },
-    saveResource() {
-      if (!this.resourceForm.filePath) return alert('请先上传文件');
-      
-      const resourceData = {
-        ...this.resourceForm,
-        chapterId: this.currentChapterId,
-        uploadTime: this.isEditResource ? this.resourceForm.uploadTime : new Date().toISOString().split('T')[0]
+      this.resourceForm = { 
+        resourceId: null, 
+        resourceName: '', 
+        resourceType: 'PPT', 
+        file: null,
+        filePath: '', 
+        fileSize: null, 
+        allowDownload: true,
+        chapterId: null
       };
+      this.uploading = false;
+      this.uploadProgress = 0;
+    },
+
+    async saveResource() {
+      if (!this.resourceForm.resourceName.trim()) {
+        Message.error('请输入资源标题');
+        return;
+      }
 
       if (this.isEditResource) {
-        const idx = this.allResources.findIndex(r => r.id === resourceData.id);
-        if (idx !== -1) this.allResources.splice(idx, 1, resourceData);
+        // 编辑资源
+        try {
+          const response = await updateResource({
+            resourceId: this.resourceForm.resourceId,
+            resourceName: this.resourceForm.resourceName,
+            allowDownload: this.resourceForm.allowDownload
+          });
+          
+          if (response.success) {
+            Message.success('更新资源成功');
+            await this.loadResources(this.currentChapterId);
+            this.closeResourceModal();
+          } else {
+            Message.error(response.message || '更新资源失败');
+          }
+        } catch (error) {
+          console.error('更新资源失败:', error);
+          Message.error('更新资源失败');
+        }
       } else {
-        this.allResources.push(resourceData);
+        // 上传新资源
+        if (!this.resourceForm.file) {
+          Message.error('请选择要上传的文件');
+          return;
+        }
+
+        this.uploading = true;
+        try {
+          const formData = new FormData();
+          formData.append('file', this.resourceForm.file);
+          formData.append('resourceName', this.resourceForm.resourceName);
+          formData.append('resourceType', this.resourceForm.resourceType);
+          formData.append('chapterId', this.resourceForm.chapterId);
+          formData.append('allowDownload', this.resourceForm.allowDownload);
+
+          const response = await uploadResource(formData);
+          
+          if (response.success) {
+            Message.success('资源上传成功');
+            await this.loadResources(this.currentChapterId);
+            this.closeResourceModal();
+          } else {
+            Message.error(response.message || '资源上传失败');
+          }
+        } catch (error) {
+          console.error('上传资源失败:', error);
+          Message.error('上传资源失败');
+        } finally {
+          this.uploading = false;
+        }
       }
-      this.closeResourceModal();
     },
-    deleteResource(id) {
-      if (confirm('确定删除该资源吗？')) {
-        this.allResources = this.allResources.filter(r => r.id !== id);
+
+    async deleteResource(resourceId) {
+      try {
+        await MessageBox.confirm('确定删除该资源吗？', '确认删除', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        });
+
+        const response = await deleteResource(resourceId);
+        if (response.success) {
+          Message.success('删除资源成功');
+          await this.loadResources(this.currentChapterId);
+        } else {
+          Message.error(response.message || '删除资源失败');
+        }
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('删除资源失败:', error);
+          Message.error('删除资源失败');
+        }
       }
+    },
+
+    // 下载资源
+    async downloadResource(resourceId, resourceName) {
+      try {
+        const response = await downloadResource(resourceId);
+        
+        // 创建blob对象
+        const blob = new Blob([response]);
+        
+        // 创建下载链接
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = resourceName || 'resource';
+        document.body.appendChild(link);
+        link.click();
+        
+        // 清理
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+        
+        Message.success('开始下载');
+      } catch (error) {
+        console.error('下载资源失败:', error);
+        Message.error('下载资源失败');
+      }
+    },
+
+    // 加载资源列表
+    async loadResources(chapterId) {
+      if (!chapterId) return;
+      
+      try {
+        const response = await getResourcesByChapter(chapterId);
+        if (response.success) {
+          this.allResources = response.data || [];
+        } else {
+          Message.error(response.message || '加载资源失败');
+          this.allResources = [];
+        }
+      } catch (error) {
+        console.error('加载资源失败:', error);
+        this.allResources = [];
+        Message.error('加载资源失败');
+      }
+    },
+
+    // 格式化时间
+    formatTime(time) {
+      if (!time) return '';
+      return time.length > 10 ? time.substring(0, 10) : time;
+    },
+
+    // 获取资源类型显示文本
+    getResourceTypeText(type) {
+      const map = {
+        'PPT': 'PPT演示文稿',
+        'PDF': 'PDF文档',
+        '视频': '教学视频',
+        'Word': 'Word文档',
+        '音频': '音频文件'
+      };
+      return map[type] || type;
     }
   }
 }
@@ -402,23 +822,26 @@ export default {
 
 /* 表格样式 */
 .data-table { width: 100%; border-collapse: collapse; }
-.data-table th { background: #fafafa; padding: 15px; text-align: left; color: #606266; font-weight: 600; border-bottom: 1px solid #ebeef5; }
-.data-table td { padding: 15px; border-bottom: 1px solid #ebeef5; color: #606266; font-size: 14px; vertical-align: middle; }
-.data-table tr:hover { background-color: #f9f9f9; }
+.data-table th { background: #fafafa; padding: 16px; text-align: left; color: #333; font-weight: 600; border-bottom: 1px solid #ebeef5; }
+.data-table td { padding: 16px; border-bottom: 1px solid #ebeef5; color: #606266; font-size: 14px; vertical-align: middle; }
+.data-table tr:hover { background-color: #f5f7fa; }
 
-.type-icon { font-size: 24px; text-align: center; }
+.type-icon { font-size: 24px; text-align: center; min-width: 50px; }
 .res-title { font-weight: 500; color: #333; margin-bottom: 2px; }
 .res-path { font-size: 12px; color: #999; font-family: monospace; }
 .size-col { font-family: monospace; }
 .time-col { color: #909399; font-size: 13px; }
 
-.tag-success { color: #52c41a; background: #f6ffed; padding: 2px 6px; border-radius: 4px; font-size: 12px; border: 1px solid #b7eb8f; }
-.tag-warn { color: #fa8c16; background: #fff7e6; padding: 2px 6px; border-radius: 4px; font-size: 12px; border: 1px solid #ffd591; }
+.tag-success { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+.tag-warn { background: #fff1f0; color: #f5222d; border: 1px solid #ffa39e; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
 
-.action-col { display: flex; gap: 10px; }
-.btn-text { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0; }
+/* 操作按钮 - 修改为与教师管理页面一致 */
+.action-col { display: flex; gap: 8px; }
+.btn-text { background: none; border: none; cursor: pointer; font-size: 13px; padding: 0 4px; }
 .btn-edit { color: #1890ff; } .btn-edit:hover { text-decoration: underline; }
+.btn-download { color: #52c41a; } .btn-download:hover { text-decoration: underline; }
 .btn-danger { color: #f5222d; } .btn-danger:hover { text-decoration: underline; }
+.btn-download:disabled { color: #ccc; cursor: not-allowed; }
 
 .empty-state { text-align: center; padding: 60px; color: #ccc; font-style: italic; }
 
@@ -450,9 +873,66 @@ export default {
 .form-group input:focus, .form-group select:focus { border-color: #1890ff; outline: none; }
 .input-disabled { background: #f5f7fa; color: #909399; cursor: not-allowed; }
 
-.file-upload-box { display: flex; gap: 10px; }
-.file-upload-box input { flex: 1; cursor: pointer; background: #fff; }
-.hint { font-size: 12px; color: #909399; margin-top: 5px; }
+/* 文件上传区域样式 */
+.file-upload-area { width: 100%; }
+.file-upload-box { width: 100%; }
+.file-upload-box input[type="file"] { width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box; }
+
+/* 文件信息显示 */
+.file-info { padding: 12px; background: #f5f7fa; border-radius: 4px; border: 1px solid #e9e9eb; }
+.file-info-item { display: flex; align-items: flex-start; gap: 10px; }
+.file-icon { font-size: 24px; color: #606266; }
+.file-details { flex: 1; }
+.file-name { font-weight: 500; color: #333; margin-bottom: 4px; }
+.file-meta { font-size: 12px; color: #909399; }
+
+/* 已选择的文件样式 */
+.selected-file { margin-top: 8px; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; border: 1px solid #e9e9eb; display: flex; align-items: center; gap: 8px; }
+.selected-file .file-icon { font-size: 16px; }
+.selected-file .file-name { flex: 1; font-size: 13px; color: #606266; }
+.selected-file .file-size { font-size: 12px; color: #909399; }
+
+.hint { font-size: 12px; color: #909399; margin-top: 5px; line-height: 1.4; }
 
 .modal-footer { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+
+/* 教学班选择器样式 */
+.class-selector {
+  margin-left: auto;
+}
+
+.class-select {
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: white;
+  color: #606266;
+  font-size: 14px;
+  min-width: 300px;
+}
+
+.class-select:focus {
+  outline: none;
+  border-color: #1890ff;
+}
+
+/* 上传进度条样式 */
+.upload-progress {
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: #e8e8e8;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+.progress {
+  height: 100%;
+  background: #1890ff;
+  transition: width 0.3s;
+}
 </style>
