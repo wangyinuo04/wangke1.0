@@ -169,7 +169,6 @@
                 </span>
               </td>
               <td>
-                <button class="btn-text btn-primary" @click="viewExamDetails(exam)">详情</button>
                 <button class="btn-text btn-danger" @click="deleteExam(exam.examId)">取消</button>
               </td>
             </tr>
@@ -263,18 +262,17 @@
                 <td>{{ sub.studentName || '未知' }}</td>
                 <td>{{ sub.className || '-' }}</td>
                 <td>{{ sub.objectiveScore || 0 }}</td>
-                <!-- 使用统一的灰色横线 -->
                 <td>
                   <span v-if="sub.subjectiveScore !== null && sub.subjectiveScore !== undefined" class="score-green">
                     {{ sub.subjectiveScore }}
                   </span>
-                  <span v-else>-</span> <!-- 去掉text-gray类 -->
+                  <span v-else>-</span>
                 </td>
                 <td>
                   <strong v-if="sub.totalScore !== null && sub.totalScore !== undefined" class="score-total">
                     {{ sub.totalScore }}
                   </strong>
-                  <span v-else>-</span> <!-- 去掉text-gray类 -->
+                  <span v-else>-</span>
                 </td>
                 <td>
                   <span class="status-badge" :class="getSubmissionStatusClass(sub)">
@@ -618,7 +616,6 @@
             <div class="comparison-box">
               <div class="answer-block student">
                 <p class="label">🧑‍🎓 学生作答：</p>
-                <!-- 在批改弹窗中找到这个部分 -->
                 <div v-if="currentGrading.subjectiveAnswers" class="text-content">
                   <div class="subjective-answers-container">
                     <div v-for="answer in formatSubjectiveAnswers(currentGrading.subjectiveAnswers)"
@@ -654,39 +651,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 试卷组卷模块 -->
-    <div v-if="currentTab === 'paper'" class="tab-content fade-in">
-      <div class="action-bar">
-        <h3>试卷列表</h3>
-        <button class="btn btn-primary" @click="openPaperModal()">+ 组建新试卷</button>
-      </div>
-
-      <!-- 改为按课程分组显示 -->
-      <div v-if="papers && papers.length > 0">
-        <div v-for="(coursePapers, courseId) in groupedPapers" :key="courseId" class="course-section">
-          <h4>{{ getCourseName(courseId) }} ({{ coursePapers.length }} 份试卷)</h4>
-          <div class="paper-grid">
-            <div v-for="p in coursePapers" :key="p.paperId" class="paper-card">
-              <div class="paper-icon">📄</div>
-              <div class="paper-info">
-                <h4>{{ p.paperTitle }}</h4>
-                <p>总分: {{ p.totalScore }}分 | 所属课程: {{ getCourseName(p.courseId) }}</p>
-                <p>创建时间: {{ formatDateTime(p.createdTime) }}</p>
-              </div>
-              <div class="paper-actions">
-                <button class="btn-text btn-danger" @click="deletePaper(p.paperId)">删除</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-else class="empty-tip">
-        <p>暂无试卷，请点击右上角创建</p>
-      </div>
-    </div>
-
 
   </div>
 </template>
@@ -1391,10 +1355,6 @@ export default {
         console.error('加载考试列表失败:', e);
         this.$message.error('加载考试列表失败');
       }
-    },
-
-    viewExamDetails(exam) {
-      this.$message.info(`查看考试详情: ${exam.examName}`);
     },
 
     async deleteExam(id) {
