@@ -27,6 +27,4 @@ public class Exam {
     private String paperId;              // 试卷ID
 
     private LocalDateTime createdTime;   // 创建时间
-
-    private String teacherId;            // 发布教师ID
 }

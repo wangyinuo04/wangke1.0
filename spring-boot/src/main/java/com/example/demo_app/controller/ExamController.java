@@ -53,24 +53,38 @@ public class ExamController {
             exam.setTimeLimit(Integer.parseInt(requestData.get("timeLimit").toString()));
             exam.setShowAnswers(Boolean.parseBoolean(requestData.get("showAnswers").toString()));
 
-            // 解析时间
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            // 解析时间 - 支持多种格式
             String startTimeStr = (String) requestData.get("startTime");
-            exam.setStartTime(LocalDateTime.parse(startTimeStr, formatter));
+            LocalDateTime startTime;
 
-            // 获取教师ID
-            String teacherId = request.getHeader("X-Teacher-Id");
-            if (teacherId == null) {
-                teacherId = (String) requestData.get("teacherId");
+            try {
+                // 尝试解析 ISO 格式 (如 "2026-01-01T02:00")
+                if (startTimeStr.contains("T")) {
+                    // 使用 LocalDateTime.parse 直接解析 ISO 格式
+                    startTime = LocalDateTime.parse(startTimeStr);
+                } else {
+                    // 尝试解析其他格式
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                    startTime = LocalDateTime.parse(startTimeStr, formatter);
+                }
+            } catch (Exception e) {
+                // 如果以上都失败，尝试最简单的格式
+                startTimeStr = startTimeStr.replace("T", " ");
+                if (!startTimeStr.contains(":")) {
+                    startTimeStr += ":00:00";
+                } else if (startTimeStr.split(":").length == 2) {
+                    startTimeStr += ":00";
+                }
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                startTime = LocalDateTime.parse(startTimeStr, formatter);
             }
 
-            if (teacherId == null || teacherId.trim().isEmpty()) {
-                result.put("success", false);
-                result.put("message", "教师ID不能为空");
-                return result;
-            }
+            exam.setStartTime(startTime);
 
-            Exam publishedExam = examService.publishExam(exam, teacherId);
+            // 不再需要验证教师ID，因为Exam表没有teacher_id字段
+            // 通过class_id就可以关联到教学班和教师
+
+            Exam publishedExam = examService.publishExam(exam); // 移除teacherId参数
 
             result.put("success", true);
             result.put("data", publishedExam);

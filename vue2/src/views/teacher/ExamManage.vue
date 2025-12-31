@@ -493,11 +493,12 @@
 <script>
 // 导入 API
 import {
-  getQuestionList, addQuestion, updateQuestion, deleteQuestion, getQuestionsByCourse
+  getQuestionList, addQuestion, updateQuestion, deleteQuestion, getQuestionsByCourse,
+  addExam // 添加addExam
 } from '@/api/exam'
 import { addPaper, deletePaper, getPapersGroupedByCourse } from '@/api/paper'
 import { getExamList, deleteExam } from '@/api/exam'
-import { getTeacherCourses } from '@/api/teacher'
+import { getTeacherCourses, getTeachingClassesByTeacher } from '@/api/teacher'
 
 export default {
   name: 'ExamManage',
@@ -679,6 +680,9 @@ export default {
           }
         }
 
+        // 获取教师的教学班
+        await this.fetchTeachingClasses();
+
         // 加载所有数据
         await Promise.all([
           this.fetchQuestions(),
@@ -689,6 +693,26 @@ export default {
       } catch (error) {
         console.error('初始化数据失败:', error);
         this.$message.error('加载数据失败，请刷新重试');
+      }
+    },
+
+    // 新增方法：获取教师的教学班
+    async fetchTeachingClasses() {
+      if (!this.currentTeacher) return;
+      try {
+        const res = await getTeachingClassesByTeacher(this.currentTeacher.teacherId);
+        if (res.success) {
+          // 处理返回的数据格式
+          this.teachingClasses = res.data.map(classInfo => ({
+            classId: classInfo.id || classInfo.classId,
+            className: classInfo.className,
+            courseId: this.getCourseIdByClassName(classInfo.courseName), // 需要根据课程名匹配课程ID
+            courseName: classInfo.courseName
+          }));
+        }
+      } catch (error) {
+        console.error('获取教学班失败:', error);
+        this.$message.error('加载教学班数据失败');
       }
     },
 
@@ -1080,12 +1104,11 @@ export default {
 
     // --- 考试管理方法 ---
     openExamModal() {
-      // 开发中：实际应该获取教学班数据
-      // this.fetchTeachingClasses()
-      this.teachingClasses = [
-        { classId: 'C001', className: '软件工程2023班', courseId: 'C001', courseName: '软件工程' },
-        { classId: 'C002', className: '数据库2023班', courseId: 'C002', courseName: '数据库原理' }
-      ]
+      // 检查是否已加载教学班数据
+      if (this.teachingClasses.length === 0) {
+        this.$message.warning('正在加载教学班数据...');
+        return;
+      }
 
       this.examForm = {
         examName: '',
@@ -1094,8 +1117,14 @@ export default {
         startTime: this.getDefaultStartTime(),
         timeLimit: 90,
         showAnswers: false
-      }
-      this.showExamModal = true
+      };
+      this.showExamModal = true;
+    },
+
+    // 根据课程名获取课程ID
+    getCourseIdByClassName(courseName) {
+      const course = this.teacherCourses.find(c => c.courseName === courseName);
+      return course ? course.courseId : '';
     },
 
     closeExamModal() {
@@ -1117,44 +1146,68 @@ export default {
 
     async saveExam() {
       if (!this.examForm.examName.trim()) {
-        this.$message.error('请输入考试名称')
-        return
+        this.$message.error('请输入考试名称');
+        return;
       }
 
       if (!this.examForm.classId) {
-        this.$message.error('请选择教学班')
-        return
+        this.$message.error('请选择教学班');
+        return;
       }
 
       if (!this.examForm.paperId) {
-        this.$message.error('请选择试卷')
-        return
+        this.$message.error('请选择试卷');
+        return;
       }
 
       if (!this.examForm.startTime) {
-        this.$message.error('请选择开始时间')
-        return
+        this.$message.error('请选择开始时间');
+        return;
       }
 
       if (!this.examForm.timeLimit || this.examForm.timeLimit <= 0) {
-        this.$message.error('请输入有效的限时时长')
-        return
+        this.$message.error('请输入有效的限时时长');
+        return;
       }
 
       try {
-        // 这里调用实际的API
-        // const res = await addExam(this.examForm)
-        // if (res.success) {
-        //   this.$message.success('考试发布成功')
-        //   this.closeExamModal()
-        //   await this.fetchExams()
-        // }
+        // 将时间格式转换为后端需要的格式
+        const examData = {
+          ...this.examForm,
+          startTime: this.formatDateTimeForBackend(this.examForm.startTime)
+        };
 
-        this.$message.success('考试安排功能开发中，模拟发布成功')
-        this.closeExamModal()
+        const res = await addExam(examData);
+        if (res.success) {
+          this.$message.success('考试发布成功');
+          this.closeExamModal();
+          await this.fetchExams(); // 重新加载考试列表
+        } else {
+          this.$message.error(res.message || '发布考试失败');
+        }
       } catch (error) {
-        console.error('发布考试失败:', error)
-        this.$message.error('发布考试失败')
+        console.error('发布考试失败:', error);
+        this.$message.error('发布考试失败');
+      }
+    },
+
+    // 新增方法：将时间转换为后端需要的格式
+    formatDateTimeForBackend(dateTimeStr) {
+      if (!dateTimeStr) return '';
+      try {
+        // 将 "2026-01-01T02:00" 转换为 "2026-01-01 02:00:00"
+        const date = new Date(dateTimeStr);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      } catch (e) {
+        console.error('时间格式转换错误:', e);
+        return dateTimeStr.replace('T', ' ') + ':00'; // 简单转换
       }
     },
   },
@@ -1173,7 +1226,7 @@ export default {
 </script>
 
 <style scoped>
-  /* 状态标签样式 */
+/* 状态标签样式 */
 .status-badge {
   padding: 2px 8px;
   border-radius: 4px;
@@ -1214,7 +1267,7 @@ export default {
 }
 
 /* 表格中的操作按钮间距 */
-.data-table td .btn-text + .btn-text {
+.data-table td .btn-text+.btn-text {
   margin-left: 5px;
 }
 

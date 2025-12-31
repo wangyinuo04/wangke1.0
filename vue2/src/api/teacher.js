@@ -102,11 +102,12 @@ export function getTeacherCourses(teacherId) {
   })
 }
 
-// 获取教师的教学班
+// 修改获取教师教学班的函数路径
 export function getTeachingClassesByTeacher(teacherId) {
   return request({
-    url: `/api/teacher/teaching-classes`,
-    method: 'get',
-    params: { teacherId }  // 通过查询参数传递
+    // 将路径改为 TeachingClassController 的接口
+    url: `/api/teachingClass/teacher/${teacherId}`,  // 修改这里
+    method: 'get'
+    // 移除 params: { teacherId }，因为现在是通过路径参数传递
   })
 }

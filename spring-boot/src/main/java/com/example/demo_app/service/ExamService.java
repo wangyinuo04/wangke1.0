@@ -27,10 +27,11 @@ public class ExamService extends ServiceImpl<ExamMapper, Exam> {
      * 发布考试
      */
     @Transactional
-    public Exam publishExam(Exam exam, String teacherId) {
+    public Exam publishExam(Exam exam) {  // 移除teacherId参数
         // 生成考试ID
         exam.setExamId(UUID.randomUUID().toString().replace("-", "").substring(0, 20));
-        exam.setTeacherId(teacherId);
+        // 移除 teacherId 设置，因为Exam表没有这个字段
+        // exam.setTeacherId(teacherId);
         exam.setCreatedTime(LocalDateTime.now());
 
         // 计算结束时间
