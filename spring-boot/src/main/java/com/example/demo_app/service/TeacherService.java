@@ -130,4 +130,29 @@ public class TeacherService extends ServiceImpl<TeacherMapper, Teacher> {
         // 由于需要TeachingClass实体类，先返回空列表
         return new ArrayList<>();
     }
+
+    /**
+     * 修改密码（验证原密码）
+     */
+    public boolean changePassword(String teacherId, String oldPassword, String newPassword) {
+        Teacher teacher = getById(teacherId);
+        if (teacher == null) {
+            return false;
+        }
+
+        // 验证原密码（注意：这里需要根据你的密码加密方式验证）
+        // 如果密码没有加密，直接比较字符串
+        if (!oldPassword.equals(teacher.getLoginPassword())) {
+            return false;
+        }
+
+        // 新密码不能与旧密码相同
+        if (oldPassword.equals(newPassword)) {
+            return false;
+        }
+
+        // 更新密码（实际项目中应加密存储）
+        teacher.setLoginPassword(newPassword); // TODO: 这里应该加密
+        return updateById(teacher);
+    }
 }

@@ -14,6 +14,23 @@ const service = axios.create({
 service.interceptors.request.use(
   config => {
     console.log('发送请求到:', config.baseURL + config.url)
+    
+    // 从localStorage或Vuex获取用户信息并添加到请求头
+    const userInfoStr = localStorage.getItem('userInfo');
+    if (userInfoStr) {
+      try {
+        const userInfo = JSON.parse(userInfoStr);
+        if (userInfo.id) {
+          config.headers['X-User-Id'] = userInfo.id;
+        }
+        if (userInfo.role) {
+          config.headers['X-User-Role'] = userInfo.role;
+        }
+      } catch (e) {
+        console.warn('解析用户信息失败:', e);
+      }
+    }
+    
     return config
   },
   error => {

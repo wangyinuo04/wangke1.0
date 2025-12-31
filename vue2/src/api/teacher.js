@@ -111,3 +111,31 @@ export function getTeachingClassesByTeacher(teacherId) {
     // 移除 params: { teacherId }，因为现在是通过路径参数传递
   })
 }
+
+// teacher.js 中添加以下方法：
+
+// 获取当前登录教师信息
+export function getCurrentTeacher() {
+  return request({
+    url: '/api/teacher/current',
+    method: 'get'
+  })
+}
+
+// 更新教师联系方式
+export function updateTeacherContact(contactInfo) {
+  return request({
+    url: '/api/teacher/update-contact',
+    method: 'put',
+    data: contactInfo
+  })
+}
+
+// 修改密码
+export function changeTeacherPassword(passwordInfo) {
+  return request({
+    url: '/api/teacher/change-password',
+    method: 'put',
+    data: passwordInfo
+  })
+}

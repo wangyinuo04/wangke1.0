@@ -152,27 +152,31 @@
 </template>
 
 <script>
+import { getCurrentTeacher, updateTeacherContact, changeTeacherPassword } from '@/api/teacher'
+
 export default {
   name: 'TeacherProfile',
   data() {
     return {
-      // 左侧固定信息 (已移除入职时间和职称)
+      // 左侧固定信息
       teacherInfo: {
-        name: '李老师',
-        id: 'T202301',
-        college: '软件学院'
+        name: '',
+        id: '',
+        college: ''
       },
       // 右侧可编辑信息 - 联系方式
       contactForm: {
-        phone: '13800138000',
-        email: 'li.teacher@university.edu.cn'
+        phone: '',
+        email: ''
       },
       // 右侧可编辑信息 - 密码
       passForm: {
         oldPass: '',
         newPass: '',
         confirmPass: ''
-      }
+      },
+      loading: false,
+      teacherId: '' // 存储教师ID
     }
   },
   computed: {
@@ -198,27 +202,170 @@ export default {
       return '强';
     }
   },
+  created() {
+    this.getCurrentTeacherInfo();
+  },
   methods: {
     goBack() {
       this.$router.push('/teacher/home');
     },
-    // 更新基本信息
-    updateContactInfo() {
-      console.log('Update Contact:', this.contactForm);
-      alert('🎉 基本资料保存成功！');
-    },
-    // 修改密码
-    updatePassword() {
-      if (this.passwordMismatch) {
-        return alert('错误：两次输入的新密码不一致！');
+    
+    // 获取当前登录教师信息（参考MyCourses.vue的方式）
+    getCurrentTeacherInfo() {
+      // 从Vuex或localStorage获取教师信息
+      const userInfo = this.$store.state.userInfo || JSON.parse(localStorage.getItem('userInfo') || '{}');
+      
+      if (userInfo.role === 'teacher' && userInfo.id) {
+        this.teacherId = userInfo.id;
+        this.loadTeacherProfile();
+      } else {
+        console.error('未获取到教师信息，当前用户信息:', userInfo);
+        this.$message.error('无法获取教师信息，请重新登录');
+        this.$router.push('/login');
       }
-      if (this.passForm.oldPass === this.passForm.newPass) {
-        return alert('错误：新密码不能与旧密码相同！');
+    },
+    
+    // 加载教师详细信息
+    async loadTeacherProfile() {
+      this.loading = true;
+      try {
+        const response = await getCurrentTeacher();
+        
+        if (response.success && response.data) {
+          const teacher = response.data;
+          
+          // 更新左侧信息
+          this.teacherInfo = {
+            name: teacher.name || '未知',
+            id: teacher.teacherId || this.teacherId,
+            college: teacher.department || '未知学院'
+          };
+          
+          // 更新右侧联系方式表单
+          this.contactForm = {
+            phone: teacher.phone || '',
+            email: teacher.email || ''
+          };
+          
+          console.log('教师信息加载成功:', this.teacherInfo);
+        } else {
+          this.$message.warning(response.message || '获取教师信息失败，使用本地缓存信息');
+          // 使用本地存储的基本信息
+          const localUser = this.$store.state.userInfo || JSON.parse(localStorage.getItem('userInfo') || '{}');
+          this.teacherInfo = {
+            name: localUser.name || '教师',
+            id: this.teacherId,
+            college: localUser.department || '未知学院'
+          };
+        }
+      } catch (error) {
+        console.error('加载教师信息失败:', error);
+        this.$message.error('获取教师信息失败，请检查网络连接');
+        
+        // 使用本地信息作为fallback
+        const localUser = this.$store.state.userInfo || JSON.parse(localStorage.getItem('userInfo') || '{}');
+        this.teacherInfo = {
+          name: localUser.name || '教师',
+          id: this.teacherId,
+          college: localUser.department || '未知学院'
+        };
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    // 更新基本信息
+    async updateContactInfo() {
+      try {
+        // 表单验证
+        if (!this.contactForm.phone || !this.contactForm.email) {
+          this.$message.warning('请填写完整的联系方式');
+          return;
+        }
+        
+        if (this.contactForm.phone.length !== 11) {
+          this.$message.warning('请输入11位手机号码');
+          return;
+        }
+        
+        const response = await updateTeacherContact(this.contactForm);
+        
+        if (response.success) {
+          this.$message.success('🎉 基本资料保存成功！');
+          // 更新本地存储的用户信息中的联系方式（可选）
+          this.updateLocalUserInfo();
+        } else {
+          this.$message.error(response.message || '保存失败');
+        }
+      } catch (error) {
+        console.error('更新联系方式失败:', error);
+        this.$message.error('保存失败，请检查网络连接');
+      }
+    },
+    
+    // 修改密码
+    async updatePassword() {
+      if (this.passwordMismatch) {
+        this.$message.error('错误：两次输入的新密码不一致！');
+        return;
       }
       
-      console.log('Update Password:', this.passForm);
-      alert('🔒 密码修改成功！请重新登录。');
-      this.$router.push('/login');
+      if (this.passForm.newPass.length < 6) {
+        this.$message.warning('新密码至少需要6位');
+        return;
+      }
+      
+      if (this.passForm.oldPass === this.passForm.newPass) {
+        this.$message.error('错误：新密码不能与旧密码相同！');
+        return;
+      }
+      
+      try {
+        const passwordInfo = {
+          oldPassword: this.passForm.oldPass,
+          newPassword: this.passForm.newPass,
+          confirmPassword: this.passForm.confirmPass
+        };
+        
+        const response = await changeTeacherPassword(passwordInfo);
+        
+        if (response.success) {
+          this.$message.success('🔒 密码修改成功！请重新登录。');
+          // 清空密码表单
+          this.passForm = {
+            oldPass: '',
+            newPass: '',
+            confirmPass: ''
+          };
+          // 清除登录状态
+          this.$store.dispatch('clearUserInfo');
+          localStorage.removeItem('userInfo');
+          localStorage.removeItem('token');
+          // 跳转到登录页
+          this.$router.push('/login');
+        } else {
+          this.$message.error(response.message || '密码修改失败');
+        }
+      } catch (error) {
+        console.error('修改密码失败:', error);
+        this.$message.error('修改密码失败，请检查网络连接');
+      }
+    },
+    
+    // 更新本地存储的用户信息（可选）
+    updateLocalUserInfo() {
+      try {
+        const userInfo = this.$store.state.userInfo || JSON.parse(localStorage.getItem('userInfo') || '{}');
+        userInfo.phone = this.contactForm.phone;
+        userInfo.email = this.contactForm.email;
+        
+        // 更新Vuex
+        this.$store.dispatch('setUserInfo', userInfo);
+        // 更新localStorage
+        localStorage.setItem('userInfo', JSON.stringify(userInfo));
+      } catch (error) {
+        console.warn('更新本地用户信息失败:', error);
+      }
     }
   }
 }
