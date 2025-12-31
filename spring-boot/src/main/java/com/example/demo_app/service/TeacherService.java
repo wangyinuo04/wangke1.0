@@ -2,11 +2,14 @@ package com.example.demo_app.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.example.demo_app.entity.Course;
 import com.example.demo_app.entity.Teacher;
+import com.example.demo_app.entity.TeachingClass;
 import com.example.demo_app.mapper.TeacherMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -106,5 +109,25 @@ public class TeacherService extends ServiceImpl<TeacherMapper, Teacher> {
     public boolean deleteTeacher(String teacherId) {
         // 直接从数据库删除记录
         return removeById(teacherId);
+    }
+
+    // 在TeacherService类中添加以下方法：
+
+    /**
+     * 获取教师教授的课程
+     */
+    public List<Course> getTeacherCourses(String teacherId) {
+        // 这里需要实现根据教师ID获取其教授的课程
+        // 由于需要Course实体类，先返回空列表
+        return new ArrayList<>();
+    }
+
+    /**
+     * 获取教师的教学班
+     */
+    public List<TeachingClass> getTeachingClassesByTeacher(String teacherId) {
+        // 这里需要实现根据教师ID获取其教学班
+        // 由于需要TeachingClass实体类，先返回空列表
+        return new ArrayList<>();
     }
 }

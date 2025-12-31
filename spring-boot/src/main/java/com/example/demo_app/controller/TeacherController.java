@@ -1,14 +1,17 @@
 package com.example.demo_app.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.demo_app.entity.Course;
 import com.example.demo_app.entity.Teacher;
+import com.example.demo_app.entity.TeachingClass;
+import com.example.demo_app.mapper.CourseMapper;
+import com.example.demo_app.mapper.TeachingClassMapper;
 import com.example.demo_app.service.TeacherService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/teacher")
@@ -17,6 +20,12 @@ public class TeacherController {
 
     @Autowired
     private TeacherService teacherService;
+
+    @Autowired
+    private TeachingClassMapper teachingClassMapper;  // 注意：变量名是 teachingClassMapper（小写）
+
+    @Autowired
+    private CourseMapper courseMapper;  // 注意：变量名是 courseMapper（小写）
 
     /**
      * 获取所有教师列表（支持搜索）
@@ -188,6 +197,47 @@ public class TeacherController {
         } catch (Exception e) {
             result.put("success", false);
             result.put("message", "删除失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取教师教授的课程（从教学班中提取）
+     */
+    @GetMapping("/courses")
+    public Map<String, Object> getTeacherCourses(@RequestParam String teacherId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 查询教师的教学班
+            LambdaQueryWrapper<TeachingClass> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(TeachingClass::getTeacherId, teacherId);
+            List<TeachingClass> teachingClasses = teachingClassMapper.selectList(wrapper);
+
+            // 从教学班中提取课程信息
+            List<Map<String, Object>> courses = new ArrayList<>();
+            Set<String> courseIds = new HashSet<>();
+
+            for (TeachingClass tc : teachingClasses) {
+                if (tc.getCourseId() != null && !courseIds.contains(tc.getCourseId())) {
+                    courseIds.add(tc.getCourseId());
+                    // 查询课程详情
+                    Course course = courseMapper.selectById(tc.getCourseId());
+                    if (course != null) {
+                        Map<String, Object> courseInfo = new HashMap<>();
+                        courseInfo.put("courseId", course.getCourseId());
+                        courseInfo.put("courseName", course.getCourseName());
+                        courses.add(courseInfo);
+                    }
+                }
+            }
+
+            result.put("success", true);
+            result.put("data", courses);
+            result.put("message", "查询成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "查询失败：" + e.getMessage());
         }
         return result;
     }

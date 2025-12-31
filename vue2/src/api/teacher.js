@@ -92,3 +92,21 @@ export function getTeacherCount() {
     method: 'get'
   })
 }
+
+// 获取教师教授的课程
+export function getTeacherCourses(teacherId) {
+  return request({
+    url: `/api/teacher/courses`,
+    method: 'get',
+    params: { teacherId }  // 通过查询参数传递
+  })
+}
+
+// 获取教师的教学班
+export function getTeachingClassesByTeacher(teacherId) {
+  return request({
+    url: `/api/teacher/teaching-classes`,
+    method: 'get',
+    params: { teacherId }  // 通过查询参数传递
+  })
+}
