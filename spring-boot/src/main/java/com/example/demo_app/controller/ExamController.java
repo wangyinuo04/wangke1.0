@@ -1,6 +1,8 @@
 package com.example.demo_app.controller;
 
 import com.example.demo_app.entity.Exam;
+import com.example.demo_app.entity.ExamParticipation;
+import com.example.demo_app.service.ExamParticipationService;
 import com.example.demo_app.service.ExamService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +20,8 @@ public class ExamController {
 
     @Autowired
     private ExamService examService;
+    @Autowired
+    private ExamParticipationService examParticipationService;
 
     /**
      * 获取考试列表（教师相关）
@@ -135,6 +139,102 @@ public class ExamController {
             e.printStackTrace();
             result.put("success", false);
             result.put("message", "查询失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取考试的所有参与记录（阅卷用）
+     */
+    @GetMapping("/{examId}/submissions")
+    public Map<String, Object> getExamSubmissions(@PathVariable String examId,
+                                                  @RequestParam(required = false) String teacherId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            List<ExamParticipation> submissions;
+
+            if (teacherId != null && !teacherId.isEmpty()) {
+                // 获取教师管理的考试参与记录
+                submissions = examParticipationService.getTeacherExamSubmissions(teacherId, examId);
+            } else {
+                // 获取所有参与记录
+                submissions = examParticipationService.getExamSubmissions(examId);
+            }
+
+            result.put("success", true);
+            result.put("data", submissions);
+            result.put("message", "查询成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "查询失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取待批阅的主观题
+     */
+    @GetMapping("/{examId}/pending-grading")
+    public Map<String, Object> getPendingGrading(@PathVariable String examId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            List<ExamParticipation> pendingList = examParticipationService.getPendingGrading(examId);
+            result.put("success", true);
+            result.put("data", pendingList);
+            result.put("message", "查询成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "查询失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 获取考试统计数据
+     */
+    @GetMapping("/{examId}/stats")
+    public Map<String, Object> getExamStats(@PathVariable String examId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            Map<String, Object> stats = examParticipationService.getExamStats(examId);
+            result.put("success", true);
+            result.put("data", stats);
+            result.put("message", "查询成功");
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "查询失败：" + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 提交主观题评分
+     */
+    @PostMapping("/submission/grade")
+    public Map<String, Object> submitGrade(@RequestBody Map<String, Object> requestData) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            String studentId = (String) requestData.get("studentId");
+            String examId = (String) requestData.get("examId");
+            Float subjectiveScore = Float.parseFloat(requestData.get("subjectiveScore").toString());
+
+            // 使用新的方法，传入复合主键
+            boolean success = examParticipationService.submitSubjectiveScore(studentId, examId, subjectiveScore);
+
+            if (success) {
+                result.put("success", true);
+                result.put("message", "评分提交成功");
+            } else {
+                result.put("success", false);
+                result.put("message", "提交失败，记录不存在");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            result.put("success", false);
+            result.put("message", "提交失败：" + e.getMessage());
         }
         return result;
     }

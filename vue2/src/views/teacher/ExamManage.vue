@@ -117,7 +117,7 @@
               <div class="paper-info">
                 <h4>{{ p.paperTitle }}</h4>
                 <p>总分: {{ p.totalScore }}分 | 状态: <span :class="getPaperStatusClass(p.paperStatus)">{{ p.paperStatus
-                }}</span></p>
+                    }}</span></p>
                 <p>创建时间: {{ formatDateTime(p.createdTime) }}</p>
               </div>
               <div class="paper-actions">
@@ -184,12 +184,121 @@
 
     <!-- 阅卷与统计模块 -->
     <div v-if="currentTab === 'result'" class="tab-content fade-in">
-      <div class="top-actions">
+      <div class="action-bar">
         <h3>阅卷与统计</h3>
+        <div class="right-btns">
+          <div class="stat-select">
+            <select v-model="selectedExamId" @change="loadExamSubmissions">
+              <option value="" disabled>请选择考试场次</option>
+              <option v-for="e in exams" :key="e.examId" :value="e.examId">{{ e.examName }}</option>
+            </select>
+            <button v-if="selectedExamId" class="btn btn-primary export-btn" @click="exportResults">📥 导出成绩单</button>
+          </div>
+        </div>
       </div>
 
-      <div class="empty-tip">
-        <p>阅卷与统计功能开发中...</p>
+      <!-- 考试统计概览 -->
+      <div v-if="selectedExamId && examStats" class="stats-panel">
+        <div class="stat-box">
+          <span class="label">参考人数</span>
+          <span class="value">{{ examStats.totalCount || 0 }}</span>
+        </div>
+        <div class="stat-box">
+          <span class="label">批改进度</span>
+          <span class="value">{{ examStats.gradedCount || 0 }} / {{ examStats.totalCount || 0 }}</span>
+        </div>
+        <div class="stat-box">
+          <span class="label">平均分</span>
+          <span class="value">{{ examStats.avgScore || 0 }}</span>
+        </div>
+        <div class="stat-box">
+          <span class="label">完成率</span>
+          <span class="value">{{ Math.round(examStats.completionRate || 0) }}%</span>
+        </div>
+      </div>
+
+      <!-- 待批阅任务 -->
+      <div v-if="selectedExamId && pendingGradingList.length > 0" class="grading-task-section">
+        <div class="task-header">
+          <h4>📝 待批阅主观题 ({{ pendingGradingList.length }})</h4>
+          <span class="task-tip">点击学生卡片开始批阅</span>
+        </div>
+        <div class="task-grid">
+          <div class="task-card" v-for="sub in pendingGradingList" :key="sub.id">
+            <div class="task-avatar" v-if="sub.studentName">
+              {{ sub.studentName.charAt(0) }}
+            </div>
+            <div class="task-info">
+              <span class="student-name">{{ sub.studentName || '未知学生' }}</span>
+              <span class="student-id">{{ sub.studentId }}</span>
+            </div>
+            <button class="btn btn-primary btn-sm" @click="openGradingModal(sub)">开始批阅</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 所有考生成绩表格 -->
+      <div v-if="selectedExamId && examSubmissions.length > 0">
+        <div class="action-bar header-sm">
+          <h3>所有考生成绩</h3>
+        </div>
+
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th width="120">学号</th>
+                <th width="100">姓名</th>
+                <th width="120">班级</th>
+                <th width="100">客观题得分</th>
+                <th width="100">主观题得分</th>
+                <th width="100">总分</th>
+                <th width="100">考试状态</th>
+                <th width="150">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="sub in examSubmissions" :key="sub.id">
+                <td class="mono">{{ sub.studentId }}</td>
+                <td>{{ sub.studentName || '未知' }}</td>
+                <td>{{ sub.className || '-' }}</td>
+                <td>{{ sub.objectiveScore || 0 }}</td>
+                <!-- 使用统一的灰色横线 -->
+                <td>
+                  <span v-if="sub.subjectiveScore !== null && sub.subjectiveScore !== undefined" class="score-green">
+                    {{ sub.subjectiveScore }}
+                  </span>
+                  <span v-else>-</span> <!-- 去掉text-gray类 -->
+                </td>
+                <td>
+                  <strong v-if="sub.totalScore !== null && sub.totalScore !== undefined" class="score-total">
+                    {{ sub.totalScore }}
+                  </strong>
+                  <span v-else>-</span> <!-- 去掉text-gray类 -->
+                </td>
+                <td>
+                  <span class="status-badge" :class="getSubmissionStatusClass(sub)">
+                    {{ sub.examStatus || '未知' }}
+                  </span>
+                </td>
+                <td>
+                  <button class="btn-text btn-primary" @click="openGradingModal(sub)">
+                    {{ (sub.subjectiveScore !== null && sub.subjectiveScore !== undefined) ? '复查' : '批改' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 无数据提示 -->
+      <div v-if="selectedExamId && examSubmissions.length === 0 && !loading" class="empty-tip">
+        <p>暂无考生参加该考试</p>
+      </div>
+
+      <div v-else-if="!selectedExamId" class="empty-tip">
+        <p>请在上方选择一场考试以开始阅卷工作</p>
       </div>
     </div>
 
@@ -487,6 +596,98 @@
       </div>
     </div>
 
+    <!-- 批改弹窗 -->
+    <div class="modal-mask" v-if="showGradingModal">
+      <div class="modal-box grading-modal">
+        <div class="modal-header">
+          <h3>人工评卷 (主观题)</h3>
+          <span class="close-btn" @click="closeGradingModal">×</span>
+        </div>
+        <div class="modal-body">
+          <div class="student-bar">
+            <span>当前学生：<strong>{{ currentGrading.studentName }}</strong> ({{ currentGrading.studentId }})</span>
+            <span class="tag-auto">客观题得分：{{ currentGrading.objectiveScore || 0 }}</span>
+          </div>
+
+          <div class="question-review-card">
+            <div class="q-title">
+              <span class="tag-type">主观题</span>
+              主观题答案批改
+            </div>
+
+            <div class="comparison-box">
+              <div class="answer-block student">
+                <p class="label">🧑‍🎓 学生作答：</p>
+                <!-- 在批改弹窗中找到这个部分 -->
+                <div v-if="currentGrading.subjectiveAnswers" class="text-content">
+                  <div class="subjective-answers-container">
+                    <div v-for="answer in formatSubjectiveAnswers(currentGrading.subjectiveAnswers)"
+                      :key="answer.questionNumber" class="answer-item">
+                      <div class="answer-header">
+                        <span class="question-number">第{{ answer.questionNumber }}题</span>
+                      </div>
+                      <div class="answer-content">
+                        {{ answer.content }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="empty-answer">
+                  <div class="empty-icon">📝</div>
+                  <div class="empty-text">学生未作答主观题</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grading-input-area">
+              <label>主观题打分：</label>
+              <input type="number" v-model.number="gradingScore" :max="getMaxSubjectiveScore()" min="0"
+                class="score-input-lg">
+              <span class="suffix">/ {{ getMaxSubjectiveScore() }} 分</span>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="closeGradingModal">取消</button>
+            <button class="btn btn-primary" @click="submitGradingScore">✅ 确认提交</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 试卷组卷模块 -->
+    <div v-if="currentTab === 'paper'" class="tab-content fade-in">
+      <div class="action-bar">
+        <h3>试卷列表</h3>
+        <button class="btn btn-primary" @click="openPaperModal()">+ 组建新试卷</button>
+      </div>
+
+      <!-- 改为按课程分组显示 -->
+      <div v-if="papers && papers.length > 0">
+        <div v-for="(coursePapers, courseId) in groupedPapers" :key="courseId" class="course-section">
+          <h4>{{ getCourseName(courseId) }} ({{ coursePapers.length }} 份试卷)</h4>
+          <div class="paper-grid">
+            <div v-for="p in coursePapers" :key="p.paperId" class="paper-card">
+              <div class="paper-icon">📄</div>
+              <div class="paper-info">
+                <h4>{{ p.paperTitle }}</h4>
+                <p>总分: {{ p.totalScore }}分 | 所属课程: {{ getCourseName(p.courseId) }}</p>
+                <p>创建时间: {{ formatDateTime(p.createdTime) }}</p>
+              </div>
+              <div class="paper-actions">
+                <button class="btn-text btn-danger" @click="deletePaper(p.paperId)">删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="empty-tip">
+        <p>暂无试卷，请点击右上角创建</p>
+      </div>
+    </div>
+
+
   </div>
 </template>
 
@@ -494,16 +695,40 @@
 // 导入 API
 import {
   getQuestionList, addQuestion, updateQuestion, deleteQuestion, getQuestionsByCourse,
-  addExam // 添加addExam
+  getExamList, addExam, deleteExam,
+  // 添加阅卷相关的API函数
+  getExamSubmissions,
+  getPendingGrading,
+  getExamStats,
+  submitSubjectiveScore
 } from '@/api/exam'
+
 import { addPaper, deletePaper, getPapersGroupedByCourse } from '@/api/paper'
-import { getExamList, deleteExam } from '@/api/exam'
 import { getTeacherCourses, getTeachingClassesByTeacher } from '@/api/teacher'
 
 export default {
   name: 'ExamManage',
   data() {
     return {
+      // 阅卷统计相关
+      selectedExamId: '',
+      examSubmissions: [],
+      pendingGradingList: [],
+      examStats: null,
+      loading: false,
+
+      // 批改弹窗相关
+      showGradingModal: false,
+      currentGrading: {
+        id: null,
+        studentId: '',
+        studentName: '',
+        objectiveScore: 0,
+        subjectiveAnswers: '',
+        subjectiveScore: null
+      },
+      gradingScore: 0,
+
       currentTab: 'bank',
       questionTypes: ['单选', '多选', '判断', '简答'],
 
@@ -609,6 +834,15 @@ export default {
       // 从 groupedPapers 中获取该课程的试卷
       const coursePapers = this.groupedPapers[classInfo.courseId] || []
       return coursePapers
+    },
+
+    // 获取主观题最大分值（这里可以根据实际情况调整）
+    getMaxSubjectiveScore() {
+      return () => {
+        // 这里可以根据考试或试卷信息动态获取
+        // 暂时返回一个固定值
+        return 100;
+      };
     }
   },
 
@@ -617,10 +851,169 @@ export default {
       if (newVal === 'bank') this.fetchQuestions();
       if (newVal === 'paper') this.fetchPapers();
       if (newVal === 'exam') this.fetchExams();
+      if (newVal === 'result') {
+        // 切换到阅卷统计时，清空相关数据
+        this.selectedExamId = '';
+        this.examSubmissions = [];
+        this.pendingGradingList = [];
+        this.examStats = null;
+      }
     }
   },
 
   methods: {
+    // 加载考试参与记录
+    async loadExamSubmissions() {
+      if (!this.selectedExamId) return;
+
+      this.loading = true;
+      try {
+        // 并行获取数据
+        const [submissionsRes, pendingRes, statsRes] = await Promise.all([
+          getExamSubmissions(this.selectedExamId, this.currentTeacher?.teacherId),
+          getPendingGrading(this.selectedExamId),
+          getExamStats(this.selectedExamId)
+        ]);
+
+        if (submissionsRes.success) {
+          this.examSubmissions = submissionsRes.data || [];
+        }
+
+        if (pendingRes.success) {
+          this.pendingGradingList = pendingRes.data || [];
+        }
+
+        if (statsRes.success) {
+          this.examStats = statsRes.data || {};
+        }
+
+      } catch (error) {
+        console.error('加载考试数据失败:', error);
+        this.$message.error('加载数据失败');
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // 打开批改弹窗
+    openGradingModal(submission) {
+      this.currentGrading = {
+        studentId: submission.studentId,
+        examId: submission.examId || this.selectedExamId, // 优先使用submission中的examId
+        studentName: submission.studentName || '未知学生',
+        objectiveScore: submission.objectiveScore || 0,
+        subjectiveAnswers: submission.subjectiveAnswers,
+        subjectiveScore: submission.subjectiveScore
+      };
+      this.gradingScore = submission.subjectiveScore || 0;
+      this.showGradingModal = true;
+    },
+
+    // 关闭批改弹窗
+    closeGradingModal() {
+      this.showGradingModal = false;
+      this.currentGrading = {
+        id: null,
+        studentId: '',
+        studentName: '',
+        objectiveScore: 0,
+        subjectiveAnswers: '',
+        subjectiveScore: null
+      };
+      this.gradingScore = 0;
+    },
+
+    // 格式化主观题答案
+    formatSubjectiveAnswers(answerJson) {
+      try {
+        if (!answerJson) return [];
+
+        // 尝试解析JSON
+        const answers = JSON.parse(answerJson);
+        const formattedAnswers = [];
+
+        if (Array.isArray(answers)) {
+          // 如果是数组，格式化为对象数组
+          answers.forEach((answer, index) => {
+            formattedAnswers.push({
+              questionNumber: index + 1,
+              content: answer || '未作答'
+            });
+          });
+        } else if (typeof answers === 'object') {
+          // 如果是对象，格式化为对象数组
+          Object.entries(answers).forEach(([key, value]) => {
+            // 提取题号，如 "q6" -> 6
+            const questionNum = key.replace(/[^0-9]/g, '');
+            formattedAnswers.push({
+              questionNumber: questionNum || key,
+              content: value || '未作答'
+            });
+          });
+        } else {
+          // 如果是纯文本，作为第一题
+          formattedAnswers.push({
+            questionNumber: 1,
+            content: answerJson
+          });
+        }
+
+        return formattedAnswers;
+      } catch (e) {
+        // 如果不是JSON，作为单题答案
+        return [{
+          questionNumber: 1,
+          content: answerJson
+        }];
+      }
+    },
+
+    // 提交批改分数
+    async submitGradingScore() {
+      if (this.gradingScore < 0) {
+        this.$message.error('分数不能为负数');
+        return;
+      }
+
+      if (this.gradingScore > this.getMaxSubjectiveScore()) {
+        this.$message.error(`分数不能超过${this.getMaxSubjectiveScore()}分`);
+        return;
+      }
+
+      try {
+        // 使用复合主键参数
+        const res = await submitSubjectiveScore(
+          this.currentGrading.studentId,
+          this.currentGrading.examId || this.selectedExamId, // 从当前批改对象或选中的考试获取examId
+          this.gradingScore
+        );
+
+        if (res.success) {
+          this.$message.success('评分提交成功');
+          this.closeGradingModal();
+          await this.loadExamSubmissions(); // 重新加载数据
+        } else {
+          this.$message.error(res.message || '提交失败');
+        }
+      } catch (error) {
+        console.error('提交评分失败:', error);
+        this.$message.error('提交失败');
+      }
+    },
+
+    // 导出成绩单
+    exportResults() {
+      this.$message.info('导出功能待实现');
+      // 这里可以调用后端导出接口
+    },
+
+    // 获取提交状态样式类
+    getSubmissionStatusClass(submission) {
+      const status = submission.examStatus;
+      if (status === '已批改') return 'status-active';
+      if (status === '已提交') return 'status-end';
+      return 'status-gray';
+    },
     // 添加这个方法到 methods 中
     getPaperStatusClass(status) {
       const classMap = {
@@ -1226,6 +1619,329 @@ export default {
 </script>
 
 <style scoped>
+  .empty-answer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #fafafa;
+  border: 2px dashed #e8e8e8;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+.empty-text {
+  color: #999;
+  font-size: 14px;
+}
+
+.subjective-answers-display {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  padding: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  color: #333;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 如果是JSON格式，可以美化显示 */
+.subjective-answers-display pre {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.stat-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.export-btn {
+  margin-left: 10px;
+  white-space: nowrap;
+}
+
+/* 在style部分添加以下样式： */
+/* 阅卷统计样式 */
+.stat-select select {
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  min-width: 250px;
+  margin-right: 10px;
+}
+
+.stats-panel {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+  margin-bottom: 20px;
+}
+
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 30px;
+  border-right: 1px solid #eee;
+}
+
+.stat-box:last-child {
+  border-right: none;
+}
+
+.stat-box .label {
+  font-size: 13px;
+  color: #909399;
+}
+
+.stat-box .value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+  margin-top: 5px;
+}
+
+.grading-task-section {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #e6f7ff;
+  box-shadow: 0 2px 12px rgba(24, 144, 255, 0.05);
+  margin-bottom: 20px;
+}
+
+.task-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.task-header h4 {
+  margin: 0;
+  color: #333;
+}
+
+.task-tip {
+  font-size: 12px;
+  color: #999;
+}
+
+.task-grid {
+  display: flex;
+  gap: 15px;
+  overflow-x: auto;
+  padding-bottom: 5px;
+}
+
+.task-card {
+  min-width: 180px;
+  background: #fafafa;
+  border: 1px solid #eee;
+  padding: 15px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-avatar {
+  width: 40px;
+  height: 40px;
+  background: #87d068;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.task-info {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+}
+
+.student-name {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.student-id {
+  font-size: 12px;
+  color: #999;
+}
+
+.score-green {
+  color: #52c41a;
+  font-weight: bold;
+}
+
+.score-blue {
+  color: #1890ff;
+  font-weight: bold;
+  margin: 0 3px;
+}
+
+.score-total {
+  font-size: 16px;
+  color: #333;
+}
+
+.mono {
+  font-family: monospace;
+}
+
+/* 批改弹窗样式 */
+.grading-modal {
+  width: 700px;
+}
+
+.student-bar {
+  background: #f0f7ff;
+  padding: 10px 15px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  border: 1px solid #bae7ff;
+}
+
+.tag-auto {
+  color: #1890ff;
+  font-weight: bold;
+}
+
+.question-review-card {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 15px;
+}
+
+.q-title {
+  font-weight: bold;
+  margin-bottom: 15px;
+  line-height: 1.5;
+}
+
+.comparison-box {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.answer-block .label {
+  margin: 0 0 5px 0;
+  font-size: 12px;
+  color: #666;
+  font-weight: bold;
+}
+
+.answer-block .content {
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.answer-block.student .content {
+  background: #f5f7fa;
+  color: #333;
+  border: 1px solid #e4e7ed;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.grading-input-area {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 15px;
+  border-top: 1px dashed #eee;
+}
+
+.score-input-lg {
+  width: 80px !important;
+  font-size: 18px;
+  font-weight: bold;
+  text-align: center;
+  color: #1890ff;
+  border: 2px solid #1890ff !important;
+}
+
+.suffix {
+  font-size: 14px;
+  color: #666;
+}
+
+/* 课程分组样式 */
+.course-section {
+  margin-bottom: 30px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #1890ff;
+}
+
+.course-section h4 {
+  margin: 0 0 15px 0;
+  color: #1890ff;
+  font-size: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+/* 试卷卡片内的操作按钮 */
+.paper-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 试卷状态标签（如果需要） */
+.paper-status {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: 3px;
+  margin-left: 10px;
+}
+
+.status-draft {
+  background: #f0f5ff;
+  color: #2f54eb;
+  border: 1px solid #adc6ff;
+}
+
+.status-published {
+  background: #f6ffed;
+  color: #52c41a;
+  border: 1px solid #b7eb8f;
+}
+
 /* 状态标签样式 */
 .status-badge {
   padding: 2px 8px;
@@ -1267,8 +1983,9 @@ export default {
 }
 
 /* 表格中的操作按钮间距 */
-.data-table td .btn-text+.btn-text {
-  margin-left: 5px;
+.data-table td .btn-text {
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 /* 题目信息行 - 水平排列 */
@@ -1835,7 +2552,8 @@ export default {
 .data-table td {
   padding: 15px;
   border-bottom: 1px solid #ebeef5;
-  color: #606266;
+  color: #000000;
+  /* 确保所有td都是这个颜色 */
   font-size: 14px;
   vertical-align: middle;
 }
@@ -2263,13 +2981,13 @@ textarea {
 
 /* 按钮样式 */
 .btn {
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-weight: 500;
-  transition: all 0.3s;
+  padding: 8px 16px;
   border: none;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
+  color: white;
+  /* 确保文字是白色 */
 }
 
 .btn-primary {
@@ -2305,7 +3023,63 @@ textarea {
   border: none;
   cursor: pointer;
   font-size: 13px;
-  padding: 0 5px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  /* 添加以下样式确保始终显示 */
+  opacity: 1 !important;
+  visibility: visible !important;
+  color: #1890ff;
+  /* 确保有颜色 */
+  transition: all 0.3s;
+  text-decoration: none;
+  display: inline-block;
+}
+
+/* 给.btn-text添加悬停效果 */
+.btn-text:hover {
+  background: #e6f7ff;
+  color: #40a9ff;
+  text-decoration: none;
+}
+
+/* 特别针对操作列中的按钮 */
+.data-table td .btn-text {
+  opacity: 1 !important;
+  visibility: visible !important;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 10px;
+}
+
+.data-table td .btn-text:hover {
+  background: #f0f7ff;
+  border-color: #91d5ff;
+  color: #1890ff;
+}
+
+/* 不同颜色的按钮 */
+.btn-text.btn-primary {
+  color: #1890ff;
+  border: 1px solid #d9d9d9;
+  background: #fafafa;
+}
+
+.btn-text.btn-primary:hover {
+  background: #1890ff;
+  color: white;
+  border-color: #1890ff;
+}
+
+.btn-text.btn-danger {
+  color: #f5222d;
+  border: 1px solid #d9d9d9;
+  background: #fafafa;
+}
+
+.btn-text.btn-danger:hover {
+  background: #f5222d;
+  color: white;
+  border-color: #f5222d;
 }
 
 .btn-danger {
@@ -2398,6 +3172,8 @@ textarea {
   display: flex;
   gap: 8px;
   align-items: center;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 /* 试卷状态标签 */
@@ -2419,5 +3195,87 @@ textarea {
   background: #f6ffed;
   color: #52c41a;
   border: 1px solid #b7eb8f;
+}
+
+/* 主观题答案容器 */
+.subjective-answers-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+/* 每道题的答案项 */
+.answer-item {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s;
+}
+
+.answer-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #bae7ff;
+}
+
+/* 题目标题栏 */
+.answer-header {
+  background: linear-gradient(135deg, #f0f7ff, #e6f7ff);
+  padding: 10px 15px;
+  border-bottom: 1px solid #d9e9ff;
+  display: flex;
+  align-items: center;
+}
+
+.question-number {
+  font-weight: 600;
+  color: #1890ff;
+  font-size: 14px;
+  background: rgba(24, 144, 255, 0.1);
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(24, 144, 255, 0.2);
+}
+
+/* 答案内容 */
+.answer-content {
+  padding: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  color: #333;
+  min-height: 60px;
+  background: #fafafa;
+}
+
+/* 如果没有答案的样式 */
+.answer-content:empty::before {
+  content: "（学生未作答）";
+  color: #999;
+  font-style: italic;
+}
+
+/* 滚动条美化 */
+.subjective-answers-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.subjective-answers-container::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 3px;
+}
+
+.subjective-answers-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.subjective-answers-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 </style>

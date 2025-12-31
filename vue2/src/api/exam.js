@@ -124,3 +124,41 @@ export function deleteExam(examId) {
     method: 'delete'
   })
 }
+
+/**
+ * 阅卷统计API
+ */
+
+// 获取考试的所有参与记录
+export function getExamSubmissions(examId, teacherId = '') {
+  return request({
+    url: `/api/exam/${examId}/submissions`,
+    method: 'get',
+    params: { teacherId }
+  })
+}
+
+// 获取待批阅的主观题
+export function getPendingGrading(examId) {
+  return request({
+    url: `/api/exam/${examId}/pending-grading`,
+    method: 'get'
+  })
+}
+
+// 获取考试统计数据
+export function getExamStats(examId) {
+  return request({
+    url: `/api/exam/${examId}/stats`,
+    method: 'get'
+  })
+}
+
+// 提交主观题评分（复合主键版本）
+export function submitSubjectiveScore(studentId, examId, subjectiveScore) {
+  return request({
+    url: '/api/exam/submission/grade',
+    method: 'post',
+    data: { studentId, examId, subjectiveScore }
+  })
+}
