@@ -93,3 +93,23 @@ export function updateHomework(homeworkData) {
     data: homeworkData
   })
 }
+
+// 学生获取我的作业列表
+export function getMyHomeworkList() {
+  return request({
+    url: '/api/homework/student/list',
+    method: 'get'
+  })
+}
+
+// 学生提交作业
+export function submitHomework(formData) {
+  return request({
+    url: '/api/homework/student/submit',
+    method: 'post',
+    data: formData,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
