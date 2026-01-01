@@ -15,6 +15,7 @@
           >
           <button class="btn btn-search" @click="handleSearch">🔍 搜索</button>
         </div>
+        <button class="btn btn-primary" @click="openJoinModal">+ 加入新课程</button>
       </div>
     </div>
 
@@ -32,14 +33,14 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="course in filteredCourses" :key="course.id">
+          <tr v-for="course in filteredCourses" :key="course.classId">
             <td><span class="term-tag">{{ course.semester }}</span></td>
             <td class="course-name-col">{{ course.courseName }}</td>
             <td>{{ course.className }}</td>
             <td>{{ course.teacherName }}</td>
-            <td class="credit-col">{{ course.credits }}</td>
+            <td class="credit-col">{{ course.credit }}</td>
             <td>
-              <span class="status-badge status-active">进行中</span>
+              <span class="status-badge status-active">{{ course.status || '进行中' }}</span>
             </td>
             <td>
               <div class="action-col">
@@ -54,7 +55,7 @@
           </tr>
           <tr v-if="filteredCourses.length === 0">
             <td colspan="7" class="empty-state">
-              暂无课程数据
+              {{ isLoading ? '加载中...' : '暂无课程数据，请点击右上方按钮加入课程' }}
             </td>
           </tr>
         </tbody>
@@ -77,7 +78,7 @@
               v-model="inviteCode" 
               class="code-input" 
               placeholder="请输入邀请码" 
-              maxlength="6"
+              maxlength="10"
               @keyup.enter="handleJoin"
             >
           </div>
@@ -100,53 +101,12 @@
         <div class="modal-body">
           <div class="resource-list">
             <div v-if="currentResources.length === 0" class="empty-resource">
-              暂无上传的教学资源
+              暂无上传的教学资源 (功能开发中...)
             </div>
             
             <div v-else class="resource-table-wrapper">
               <table class="data-table resource-table">
-                <thead>
-                  <tr>
-                    <th>资源名称</th>
-                    <th width="80">类型</th>
-                    <th width="120">上传时间</th>
-                    <th width="80">状态</th>
-                    <th width="150">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="res in currentResources" :key="res.id">
-                    <td>
-                      <div class="res-name-wrapper">
-                        <span class="file-icon">{{ getFileIcon(res.type) }}</span>
-                        <span class="res-name" :title="res.name">{{ res.name }}</span>
-                      </div>
-                    </td>
-                    <td>{{ res.type }}</td>
-                    <td class="text-gray">{{ res.uploadDate }}</td>
-                    <td>
-                      <span class="read-badge" :class="res.isRead ? 'read' : 'unread'">
-                        {{ res.isRead ? '已读' : '未读' }}
-                      </span>
-                    </td>
-                    <td>
-                      <div class="action-col">
-                        <button class="btn-text btn-view" @click="previewResource(res)">
-                          👁️ 预览
-                        </button>
-                        <button 
-                          class="btn-text btn-down" 
-                          v-if="res.allowDownload"
-                          @click="downloadResource(res)"
-                        >
-                          📥 下载
-                        </button>
-                        <span v-else class="text-disabled">不可下载</span>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                </table>
             </div>
           </div>
         </div>
@@ -160,11 +120,16 @@
 </template>
 
 <script>
+// 引入 API
+import { getMyCourses, joinClass } from '@/api/student'
+
 export default {
   name: 'CourseList',
   data() {
     return {
       searchQuery: '',
+      isLoading: false,
+      myCourses: [], // 真实数据存储数组
       
       // 加入课程相关
       showJoinModal: false,
@@ -174,62 +139,46 @@ export default {
       // 资源弹窗相关
       showResourceModal: false,
       currentCourse: {},
-      currentResources: [],
-      
-      // 模拟课程数据
-      myCourses: [
-        { 
-          id: 1, 
-          semester: '2025-2026-1', 
-          courseName: '软件工程导论', 
-          className: '软件2201班', 
-          teacherName: '王建国', 
-          credits: 3.0 
-        },
-        { 
-          id: 2, 
-          semester: '2025-2026-1', 
-          courseName: 'Web前端开发', 
-          className: '计科卓越班', 
-          teacherName: '李晓梅', 
-          credits: 4.0 
-        },
-        { 
-          id: 3, 
-          semester: '2025-2026-1', 
-          courseName: '数据库原理', 
-          className: '软件2201班', 
-          teacherName: '张伟', 
-          credits: 3.5 
-        }
-      ],
-
-      // 模拟资源库
-      mockResourceDB: {
-        1: [
-          { id: 101, name: '第一章：软件工程概述.ppt', type: 'PPT', uploadDate: '2025-09-01', isRead: true, allowDownload: true },
-          { id: 102, name: '需求分析实验指导书.pdf', type: 'PDF', uploadDate: '2025-09-05', isRead: false, allowDownload: true },
-          { id: 103, name: '敏捷开发教学视频.mp4', type: 'Video', uploadDate: '2025-09-10', isRead: false, allowDownload: false }
-        ],
-        2: [
-          { id: 201, name: 'Vue3 基础语法.pdf', type: 'PDF', uploadDate: '2025-09-02', isRead: true, allowDownload: true },
-          { id: 202, name: '组件通信源码示例.zip', type: 'Code', uploadDate: '2025-09-12', isRead: false, allowDownload: true }
-        ]
-      }
+      currentResources: [], // 暂时置空
     }
   },
   computed: {
+    // 前端搜索过滤
     filteredCourses() {
       if (!this.searchQuery) return this.myCourses;
       const q = this.searchQuery.toLowerCase();
       return this.myCourses.filter(c => 
-        c.courseName.toLowerCase().includes(q) || 
-        c.teacherName.includes(q)
+        (c.courseName && c.courseName.toLowerCase().includes(q)) || 
+        (c.teacherName && c.teacherName.toLowerCase().includes(q))
       );
     }
   },
+  created() {
+    this.fetchData();
+  },
   methods: {
+    // 从后端获取数据
+    fetchData() {
+      this.isLoading = true;
+      getMyCourses().then(res => {
+        if (res.success) {
+          this.myCourses = res.data;
+        } else {
+          // 如果没有登录或者报错，可以提示用户
+          console.error(res.message);
+          if(res.message.includes("登录")) {
+             // 可以在这里跳转登录页
+          }
+        }
+      }).catch(err => {
+        console.error("获取课程列表失败", err);
+      }).finally(() => {
+        this.isLoading = false;
+      });
+    },
+
     handleSearch() {
+      // 当前使用前端 computed 过滤，这里仅作为触发器（可选）
       console.log('Searching:', this.searchQuery);
     },
 
@@ -241,55 +190,59 @@ export default {
     closeJoinModal() {
       this.showJoinModal = false;
     },
+    
+    // 连接后端加入班级
     handleJoin() {
-      if (this.inviteCode.length !== 6) {
-        this.errorMsg = '请输入完整的6位邀请码';
-        return;
-      }
-      if (this.inviteCode.toUpperCase() === 'A8J9K2') {
-        alert('🎉 加入成功！\n课程：人工智能基础 - 2023级合班');
-        this.myCourses.push({
-          id: 4, 
-          semester: '2025-2026-1',
-          courseName: '人工智能基础',
-          className: '2023级合班',
-          teacherName: '赵强',
-          credits: 3.0
-        });
-        this.closeJoinModal();
-      } else {
-        this.errorMsg = '无效的邀请码，请检查后重试';
-      }
+      if (!this.inviteCode) return;
+      
+      const params = { invitationCode: this.inviteCode };
+      
+      joinClass(params).then(res => {
+        if (res.success) {
+          alert('🎉 ' + res.message);
+          this.closeJoinModal();
+          this.fetchData(); // 重新加载列表
+        } else {
+          this.errorMsg = res.message; // 显示后端返回的具体错误（如验证码无效、已加入）
+        }
+      }).catch(err => {
+        console.error("加入班级失败", err); // <--- 加上这一行，使用了 err 变量
+        this.errorMsg = '网络错误，请稍后重试';
+      });
     },
 
     quitCourse(course) {
       if (confirm(`确定要退出 "${course.courseName}" 吗？\n退出后将无法提交作业和查看资料。`)) {
-        this.myCourses = this.myCourses.filter(c => c.id !== course.id);
+        // TODO: 调用后端退课接口
+        alert("退课功能暂未开放 (需要后端添加 deleteEnrollment 接口)");
       }
     },
 
     openResourceModal(course) {
       this.currentCourse = course;
-      this.currentResources = this.mockResourceDB[course.id] || [];
+      // TODO: 这里将来要调用 getCourseResources(course.classId)
+      this.currentResources = []; 
       this.showResourceModal = true;
     },
     closeResourceModal() {
       this.showResourceModal = false;
       this.currentResources = [];
     },
+    
+    // 工具方法
     getFileIcon(type) {
       const map = {
-        'PPT': '📊', 'PDF': '📄', 'Video': '🎬', 'Word': '📝', 'Code': '💻'
+        'PPT': '📊', 'PDF': '📄', 'Video': '🎬', 'Word': '📝', 'Code': '💻', 'Audio': '🎵'
       };
       return map[type] || '📁';
     },
     previewResource(res) {
-      alert(`正在打开预览：${res.name}\n\n系统已记录您的阅读状态。`);
-      res.isRead = true;
+      alert(`正在打开预览：${res.name}`);
     },
     downloadResource(res) {
       if (res.allowDownload) {
         alert(`开始下载文件：${res.name}`);
+        // window.open(res.filePath)
       } else {
         alert('该资源不允许下载');
       }
@@ -299,23 +252,20 @@ export default {
 </script>
 
 <style scoped>
-/* 保持统一的页面布局风格 */
+/* 保持原有样式，仅增加一个加载状态样式 */
 .manage-container { padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
 
-/* 顶部操作栏 */
 .action-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); }
 .title-section h2 { margin: 0; font-size: 20px; color: #333; }
 .subtitle { margin: 5px 0 0; font-size: 13px; color: #999; }
 .operation-section { display: flex; gap: 15px; }
 
-/* 搜索框 */
 .search-box { display: flex; }
 .search-box input { padding: 8px 12px; border: 1px solid #dcdfe6; border-right: none; border-radius: 4px 0 0 4px; outline: none; font-size: 14px; width: 220px; transition: border 0.3s; }
 .search-box input:focus { border-color: #1890ff; }
 .btn-search { border-radius: 0 4px 4px 0; background: #f5f7fa; color: #606266; border: 1px solid #dcdfe6; border-left: none; cursor: pointer; padding: 8px 12px; }
 .btn-search:hover { background: #e6f7ff; color: #1890ff; }
 
-/* 按钮通用 */
 .btn { padding: 8px 16px; border: none; cursor: pointer; font-size: 14px; border-radius: 4px; transition: all 0.3s; }
 .btn-primary { background: #1890ff; color: white; box-shadow: 0 2px 6px rgba(24, 144, 255, 0.3); }
 .btn-primary:hover:not(:disabled) { background: #40a9ff; }
@@ -323,50 +273,27 @@ export default {
 .btn-secondary { background: #fff; border: 1px solid #dcdfe6; color: #606266; }
 .btn-secondary:hover { color: #1890ff; border-color: #c6e2ff; background: #ecf5ff; }
 
-/* 表格样式 */
 .table-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); overflow: hidden; }
 .data-table { width: 100%; border-collapse: collapse; text-align: left; }
 .data-table th { background: #fafafa; padding: 16px; color: #333; font-weight: 600; border-bottom: 1px solid #ebeef5; }
 .data-table td { padding: 16px; border-bottom: 1px solid #ebeef5; color: #606266; font-size: 14px; vertical-align: middle; }
 .data-table tr:hover { background-color: #f5f7fa; }
 
-/* 表格内元素 */
 .term-tag { background: #f0f5ff; color: #2f54eb; border: 1px solid #adc6ff; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: monospace; }
 .course-name-col { font-weight: 600; color: #333; font-size: 15px; }
 .credit-col { font-weight: bold; color: #1890ff; }
 .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
 .status-active { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
 
-/* 操作按钮 */
 .action-col { display: flex; gap: 12px; align-items: center; }
 .btn-text { background: none; border: none; cursor: pointer; font-size: 13px; padding: 4px 8px; border-radius: 4px; transition: all 0.2s; }
-
-/* 重点修复：教学资源按钮样式 */
-.btn-text.btn-resource { 
-  color: #13c2c2; /* 使用清爽的青色/Teal色，避免全蓝 */
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.btn-text.btn-resource:hover { 
-  background-color: #e6fffb; /* 悬停时淡青色背景，不刺眼 */
-  color: #08979c;
-}
-
-/* 退课按钮 */
+.btn-text.btn-resource { color: #13c2c2; font-weight: 500; display: flex; align-items: center; gap: 4px; }
+.btn-text.btn-resource:hover { background-color: #e6fffb; color: #08979c; }
 .btn-text.btn-danger { color: #ff4d4f; } 
 .btn-text.btn-danger:hover { background-color: #fff1f0; }
 
-.btn-text.btn-view { color: #1890ff; }
-.btn-text.btn-view:hover { text-decoration: underline; }
-.btn-text.btn-down { color: #52c41a; }
-.btn-text.btn-down:hover { text-decoration: underline; }
-.text-disabled { font-size: 12px; color: #ccc; cursor: not-allowed; }
-
 .empty-state { text-align: center; padding: 40px; color: #999; }
 
-/* --- 弹窗样式 --- */
 .modal-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center; }
 .modal-box { background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: modalFadeIn 0.3s ease; display: flex; flex-direction: column; }
 .join-modal { width: 400px; }
@@ -382,7 +309,6 @@ export default {
 .modal-body { padding: 30px 25px; }
 .modal-body.align-center { text-align: center; }
 
-/* 加入课程弹窗内容 */
 .icon-placeholder { font-size: 40px; margin-bottom: 10px; }
 .instruction { color: #666; font-size: 14px; margin-bottom: 20px; }
 .input-wrapper { margin-bottom: 10px; }
@@ -394,19 +320,8 @@ export default {
 .code-input:focus { border-color: #1890ff; outline: none; }
 .error-msg { color: #f5222d; font-size: 12px; margin-top: 8px; }
 
-/* 资源弹窗内容 */
 .resource-list { min-height: 200px; }
 .empty-resource { text-align: center; color: #999; margin-top: 50px; }
-.resource-table-wrapper { border: 1px solid #ebeef5; border-radius: 4px; }
-.resource-table th { background: #f9f9f9; padding: 12px; }
-.resource-table td { padding: 12px; border-bottom: 1px solid #f0f0f0; }
-.res-name-wrapper { display: flex; align-items: center; }
-.file-icon { font-size: 18px; margin-right: 8px; }
-.res-name { font-weight: 500; color: #333; cursor: default; }
-.read-badge { font-size: 12px; padding: 2px 6px; border-radius: 4px; }
-.read-badge.read { background: #f0f9eb; color: #67c23a; }
-.read-badge.unread { background: #fdf6ec; color: #e6a23c; }
-.text-gray { color: #999; font-size: 13px; }
 
 .modal-footer { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
 </style>

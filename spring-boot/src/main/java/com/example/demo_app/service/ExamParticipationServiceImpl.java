@@ -1,4 +1,4 @@
-package com.example.demo_app.service.impl;
+package com.example.demo_app.service;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo_app.entity.ExamParticipation;

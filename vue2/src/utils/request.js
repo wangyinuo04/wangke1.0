@@ -4,6 +4,7 @@ import { Message } from 'element-ui'
 // 创建axios实例
 const service = axios.create({
   baseURL: process.env.VUE_APP_BASE_API || 'http://localhost:8088', // 必须改为8088
+  withCredentials: true, // <=== 必须加上这一行！！！
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json'

@@ -1,99 +1,58 @@
 package com.example.demo_app.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.extension.service.IService;
 import com.example.demo_app.entity.Student;
-import com.example.demo_app.mapper.StudentMapper;
-import org.springframework.stereotype.Service;
+import com.example.demo_app.entity.StudentCourseVO;
 
 import java.util.List;
 
-@Service
-public class StudentService extends ServiceImpl<StudentMapper, Student> {
+/**
+ * 学生服务接口
+ */
+public interface StudentService extends IService<Student> {
+
+    // ========== 原有管理员功能 ==========
 
     /**
-     * 搜索学生（按学号或姓名）
+     * 搜索学生
      */
-    public List<Student> searchStudents(String keyword) {
-        LambdaQueryWrapper<Student> wrapper = new LambdaQueryWrapper<>();
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            wrapper.like(Student::getStudentId, keyword)
-                    .or()
-                    .like(Student::getName, keyword)
-                    .or()
-                    .like(Student::getClassName, keyword);
-        }
-        return list(wrapper);
-    }
+    List<Student> searchStudents(String keyword);
 
     /**
-     * 根据行政班级查询学生
+     * 根据行政班查询
      */
-    public List<Student> getStudentsByAdminClass(String adminClass) {
-        LambdaQueryWrapper<Student> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Student::getClassName, adminClass);
-        return list(wrapper);
-    }
+    List<Student> getStudentsByAdminClass(String adminClass);
 
     /**
-     * 更新学生信息
+     * 更新信息
      */
-    public boolean updateStudentInfo(Student student) {
-        // 检查学生是否存在
-        Student existing = getById(student.getStudentId());
-        if (existing == null) {
-            return false;
-        }
-
-        // 更新所有允许修改的字段
-        existing.setName(student.getName());
-        existing.setGender(student.getGender());
-        existing.setDepartment(student.getDepartment());
-        existing.setClassName(student.getClassName());
-        existing.setMajor(student.getMajor());
-        existing.setEnrollmentYear(student.getEnrollmentYear());
-        existing.setPhone(student.getPhone());
-        existing.setEmail(student.getEmail());
-
-        return updateById(existing);
-    }
+    boolean updateStudentInfo(Student student);
 
     /**
-     * 切换账号状态（启用/禁用）
+     * 切换状态
      */
-    public boolean toggleStatus(String studentId) {
-        Student student = getById(studentId);
-        if (student == null) {
-            return false;
-        }
-
-        if ("正常".equals(student.getAccountStatus())) {
-            student.setAccountStatus("禁用");
-        } else {
-            student.setAccountStatus("正常");
-        }
-
-        return updateById(student);
-    }
+    boolean toggleStatus(String studentId);
 
     /**
      * 重置密码
      */
-    public boolean resetPassword(String studentId) {
-        Student student = getById(studentId);
-        if (student == null) {
-            return false;
-        }
-
-        // 重置为默认密码123456
-        student.setLoginPassword("123456");
-        return updateById(student);
-    }
+    boolean resetPassword(String studentId);
 
     /**
-     * 删除学生（物理删除）
+     * 删除学生
      */
-    public boolean deleteStudent(String studentId) {
-        return removeById(studentId);
-    }
+    boolean deleteStudent(String studentId);
+
+
+    // ========== 新增学生端功能 ==========
+
+    /**
+     * 获取我的课程
+     */
+    List<StudentCourseVO> getMyCourses(String studentId);
+
+    /**
+     * 加入班级
+     */
+    void joinClass(String studentId, String invitationCode) throws Exception;
 }

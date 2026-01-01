@@ -53,3 +53,20 @@ export function getStudentCount() {
     method: 'get'
   })
 }
+
+// 获取我的课程列表
+export function getMyCourses() {
+  return request({
+    url: '/api/student/my-courses',
+    method: 'get'
+  })
+}
+
+// 加入班级
+export function joinClass(data) {
+  return request({
+    url: '/api/student/join-class',
+    method: 'post',
+    data // { invitationCode: 'xxxx' }
+  })
+}
