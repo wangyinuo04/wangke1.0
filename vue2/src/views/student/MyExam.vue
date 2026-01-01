@@ -174,7 +174,7 @@
           <div v-if="currentExam.showAnswers" class="analysis-section">
             <h4>📝 错题解析</h4>
             <div class="question-analysis-list">
-              <div v-for="(q, idx) in mockExamResultDetail" :key="q.id" class="analysis-item">
+              <div v-for="(q, idx) in examResultDetail" :key="q.id" class="analysis-item">
                 <div class="q-header-sm">
                   <span class="tag-sm">{{ q.type }}</span>
                   <span class="text-sm">{{ idx + 1 }}. {{ q.stem }}</span>
@@ -205,61 +205,24 @@
 </template>
 
 <script>
+// 引入 API
+import { getMyExamList, startExam, submitExamPaper, getExamResultDetail } from '@/api/exam'
+
 export default {
   name: 'MyExam',
   data() {
     return {
       currentTab: 'all', // all, todo, done
       searchQuery: '',
-      studentName: '张三', // 模拟当前登录学生
+      studentName: '同学', 
       
       // 状态控制
       isTakingExam: false,
       showResultModal: false,
+      isLoading: false,
       
       // 考试数据
-      allExams: [
-        { 
-          id: 1, 
-          courseName: '软件工程导论', 
-          title: '第一章单元测试', 
-          startTime: '2025-10-10 09:00', 
-          endTime: '2025-10-10 11:00', 
-          duration: 60, // 分钟
-          isSubmitted: true, 
-          totalScore: 88, 
-          objScore: 58, 
-          subjScore: 30, 
-          showAnswers: true 
-        },
-        { 
-          id: 2, 
-          courseName: 'Web前端开发', 
-          title: '期中考试', 
-          // 模拟一个正在进行的考试时间
-          startTime: '2023-01-01 00:00', 
-          endTime: '2025-12-31 23:59', 
-          duration: 90, 
-          isSubmitted: false, 
-          totalScore: null, 
-          objScore: null, 
-          subjScore: null, 
-          showAnswers: false 
-        },
-        { 
-          id: 3, 
-          courseName: '数据库原理', 
-          title: 'SQL 专项测验', 
-          startTime: '2025-11-01 14:00', 
-          endTime: '2025-11-01 16:00', 
-          duration: 45, 
-          isSubmitted: false, 
-          totalScore: null, 
-          objScore: null, 
-          subjScore: null, 
-          showAnswers: false 
-        }
-      ],
+      allExams: [], // 真实数据
 
       currentExam: {},
       
@@ -269,19 +232,8 @@ export default {
       timer: null,
       remainingSeconds: 0,
 
-      // 模拟试卷题目（参加考试时加载）
-      mockPaper: [
-        { id: 101, type: '单选', score: 5, stem: 'Vue实例挂载的各种生命周期钩子中，最早触发的是？', options: [{key:'A',val:'created'},{key:'B',val:'beforeCreate'},{key:'C',val:'mounted'}] },
-        { id: 102, type: '多选', score: 10, stem: '以下哪些是 HTML5 新增的标签？', options: [{key:'A',val:'header'},{key:'B',val:'div'},{key:'C',val:'footer'},{key:'D',val:'span'}] },
-        { id: 103, type: '判断', score: 5, stem: 'v-if 和 v-show 的作用完全相同。', options: [] },
-        { id: 104, type: '简答', score: 20, stem: '简述 MVVM 模式的原理。', options: [] }
-      ],
-
-      // 模拟错题解析（查看成绩时加载）
-      mockExamResultDetail: [
-        { id: 101, type: '单选', score: 5, stem: '软件生命周期最长的阶段？', myAnswer: 'C', correctAnswer: 'D', isCorrect: false, analysis: '维护阶段是时间最长的。' },
-        { id: 103, type: '判断', score: 5, stem: '需求分析是最后阶段？', myAnswer: '错误', correctAnswer: '错误', isCorrect: true, analysis: '需求分析是定义时期的最后阶段，不是整个周期的最后。' }
-      ]
+      // 错题解析
+      examResultDetail: [] 
     }
   },
   computed: {
@@ -309,16 +261,35 @@ export default {
       }).length;
     }
   },
+  created() {
+    this.fetchData();
+  },
   methods: {
-    handleSearch() { console.log('Searching...'); },
+    fetchData() {
+      this.isLoading = true;
+      getMyExamList().then(res => {
+        if (res.success) {
+          this.allExams = res.data;
+        } else {
+          console.error(res.message);
+        }
+      }).finally(() => {
+        this.isLoading = false;
+      });
+    },
+
+    handleSearch() { /* computed 处理 */ },
 
     // 辅助状态判断
     getExamState(exam) {
-      const now = new Date();
-      const start = new Date(exam.startTime);
-      const end = new Date(exam.endTime);
-      
       if (exam.isSubmitted) return 'done'; // 已交卷
+      
+      const now = new Date();
+      // 注意：后端传回的时间格式如果是 "yyyy-MM-dd HH:mm"，可以直接解析，
+      // 但为了保险，建议把空格换成 T (ISO格式)
+      const start = new Date(exam.startTime.replace(' ', 'T'));
+      const end = new Date(exam.endTime.replace(' ', 'T'));
+      
       if (now < start) return 'future'; // 未开始
       if (now > end) return 'ended'; // 已过期
       return 'ing'; // 进行中
@@ -331,7 +302,7 @@ export default {
         'ended': '已缺考',
         'done': '已交卷'
       };
-      return map[state];
+      return map[state] || exam.status;
     },
     getStatusClass(exam) {
       const state = this.getExamState(exam);
@@ -356,22 +327,33 @@ export default {
       return '操作';
     },
 
-    // --- 3.5.1 参加考试 ---
+    // --- 参加考试 ---
     enterExam(exam) {
+      if (this.getExamState(exam) !== 'ing') return;
+
       this.currentExam = exam;
-      // 模拟加载试题
-      this.examQuestions = JSON.parse(JSON.stringify(this.mockPaper));
-      // 初始化答案
-      this.answers = {};
-      this.examQuestions.forEach(q => {
-        this.$set(this.answers, q.id, q.type === '多选' ? [] : '');
-      });
       
-      // 开始倒计时
-      this.remainingSeconds = exam.duration * 60;
-      this.isTakingExam = true;
-      this.startTimer();
+      // 调用 API 获取试卷
+      startExam(exam.id).then(res => {
+        if (res.success) {
+          this.examQuestions = res.data;
+          // 初始化答案
+          this.answers = {};
+          this.examQuestions.forEach(q => {
+            // Vue 需要 $set 才能响应式更新
+            this.$set(this.answers, q.id, q.type === '多选' ? [] : '');
+          });
+          
+          // 开始倒计时
+          this.remainingSeconds = exam.duration * 60;
+          this.isTakingExam = true;
+          this.startTimer();
+        } else {
+          alert(res.message);
+        }
+      });
     },
+
     startTimer() {
       if (this.timer) clearInterval(this.timer);
       this.timer = setInterval(() => {
@@ -389,33 +371,59 @@ export default {
       const pad = (n) => n.toString().padStart(2, '0');
       return `${pad(h)}:${pad(m)}:${pad(s)}`;
     },
+    
+    // 提交试卷
     submitExam(isAuto) {
       clearInterval(this.timer);
       const msg = isAuto ? '考试时间到，系统已自动交卷！' : '确认提交试卷吗？交卷后无法修改。';
       
       if (isAuto || confirm(msg)) {
-        this.isTakingExam = false;
-        // 更新状态
-        const target = this.allExams.find(e => e.id === this.currentExam.id);
-        if (target) {
-          target.isSubmitted = true;
-          // 模拟立即出分（仅客观题）
-          target.totalScore = 65; // 模拟分
-          target.objScore = 65;
-          target.subjScore = null;
-        }
-        if (!isAuto) alert('交卷成功！请等待老师批改主观题。');
-        else alert('时间到，已自动交卷。');
+        
+        // 构造提交数据
+        const payload = {
+            examId: this.currentExam.id,
+            answers: this.answers
+        };
+
+        submitExamPaper(payload).then(res => {
+            if (res.success) {
+                this.isTakingExam = false;
+                if (!isAuto) alert(`🎉 交卷成功！客观题得分：${res.score}`);
+                else alert('时间到，已自动交卷。');
+                this.fetchData(); // 刷新列表状态
+            } else {
+                alert('提交失败：' + res.message);
+                if (!isAuto) this.startTimer(); // 恢复计时
+            }
+        }).catch(() => {
+            alert('网络错误');
+            if (!isAuto) this.startTimer();
+        });
+
       } else {
-        // 如果取消提交，恢复定时器（如果是手动点的）
+        // 取消提交，恢复计时
         if (!isAuto) this.startTimer();
       }
     },
 
-    // --- 3.5.2 查看成绩 ---
+    // --- 查看成绩 ---
     viewResult(exam) {
       this.currentExam = exam;
-      this.showResultModal = true;
+      this.examResultDetail = []; // 清空旧数据
+      
+      if (!exam.showAnswers) {
+          this.showResultModal = true;
+          return;
+      }
+
+      getExamResultDetail(exam.id).then(res => {
+          if (res.success) {
+              this.examResultDetail = res.data;
+              this.showResultModal = true;
+          } else {
+              alert(res.message);
+          }
+      });
     },
     closeResultModal() {
       this.showResultModal = false;

@@ -162,3 +162,38 @@ export function submitSubjectiveScore(studentId, examId, subjectiveScore) {
     data: { studentId, examId, subjectiveScore }
   })
 }
+
+// --- 学生端接口 ---
+
+// 获取我的考试列表
+export function getMyExamList() {
+  return request({
+    url: '/api/exam/student/list',
+    method: 'get'
+  })
+}
+
+// 开始考试 (获取试卷)
+export function startExam(examId) {
+  return request({
+    url: `/api/exam/student/paper/${examId}`,
+    method: 'get'
+  })
+}
+
+// 提交试卷
+export function submitExamPaper(data) {
+  return request({
+    url: '/api/exam/student/submit',
+    method: 'post',
+    data // { examId: 'xxx', answers: { q1: 'A', q2: ['A','B'] } }
+  })
+}
+
+// 获取考试结果(解析)
+export function getExamResultDetail(examId) {
+  return request({
+    url: `/api/exam/student/result/${examId}`,
+    method: 'get'
+  })
+}
