@@ -197,3 +197,19 @@ export function getExamResultDetail(examId) {
     method: 'get'
   })
 }
+
+// --- 教师阅卷补充接口 ---
+
+// 获取试卷详情（包含题目和标准答案，用于阅卷对照）
+// 注意：这里假设你有一个 /api/paper/detail/{paperId} 或者复用学生端的获取试卷接口
+// 为了方便，我们这里调用学生端的获取试卷接口（因为它返回题目信息），或者你需要确认后端是否有专门的教师端获取试卷题目接口
+// 临时方案：使用学生端的逻辑获取题目详情，或者调用后端 PaperController
+//import { getPaperDetail } from '@/api/paper' // 如果你有 paper.js，建议引入这个
+
+// 如果没有 paper.js，我们在这里定义一个
+export function getPaperQuestionsForGrading(paperId) {
+  return request({
+    url: `/api/paper/${paperId}/questions`, // 假设后端有这个接口，或者复用学生端接口
+    method: 'get'
+  })
+}

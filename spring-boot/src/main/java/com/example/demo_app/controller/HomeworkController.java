@@ -22,7 +22,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/homework")
-@CrossOrigin(origins = "http://localhost:8081", allowCredentials = "true")
 public class HomeworkController {
 
     @Autowired

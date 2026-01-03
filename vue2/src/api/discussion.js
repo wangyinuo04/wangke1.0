@@ -4,7 +4,19 @@ import request from '@/utils/request'
  * 讨论管理API
  */
 
-// 获取话题列表
+// ================== 学生端专用接口 ==================
+
+// 获取学生可见的讨论列表（我的班级 + 公共区）
+export function getStudentTopics() {
+  return request({
+    url: '/api/discussion/student/list',
+    method: 'get'
+  })
+}
+
+// ================== 通用/教师端接口 ==================
+
+// 获取话题列表（教师端，支持筛选）
 export function getTopics(teacherId, classId = '', keyword = '') {
   return request({
     url: '/api/discussion/topics',
@@ -39,7 +51,7 @@ export function toggleTopTopic(topicId, topOrder) {
   })
 }
 
-// 获取话题详情
+// 获取话题详情（包含回复列表）
 export function getTopicDetail(topicId) {
   return request({
     url: `/api/discussion/topics/${topicId}/detail`,
@@ -47,7 +59,7 @@ export function getTopicDetail(topicId) {
   })
 }
 
-// 获取话题回复
+// 单独获取话题回复（如果有单独加载需求）
 export function getReplies(topicId) {
   return request({
     url: `/api/discussion/topics/${topicId}/replies`,
