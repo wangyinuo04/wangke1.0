@@ -13,11 +13,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,6 +30,19 @@ public class HomeworkService extends ServiceImpl<HomeworkMapper, Homework> {
 
     @Autowired
     private HomeworkSubmissionMapper submissionMapper;
+
+    /**
+     * 【辅助方法】获取真正的项目模块根目录
+     * 解决 IDE 启动目录可能在父文件夹，导致 user.dir 不包含 spring-boot 子目录的问题
+     */
+    private String getRealProjectRoot() {
+        String root = System.getProperty("user.dir");
+        // 如果当前路径不以 spring-boot 结尾，说明是在父目录启动的，需要手动拼接
+        if (!root.endsWith("spring-boot")) {
+            root = root + File.separator + "spring-boot";
+        }
+        return root;
+    }
 
     /**
      * 获取教师的所有作业
@@ -52,7 +63,6 @@ public class HomeworkService extends ServiceImpl<HomeworkMapper, Homework> {
                 }
             }
         }
-
         return homeworks;
     }
 
@@ -63,7 +73,6 @@ public class HomeworkService extends ServiceImpl<HomeworkMapper, Homework> {
     public Homework publishHomework(Homework homework, MultipartFile attachmentFile) throws IOException {
         // 生成作业ID
         homework.setHomeworkId(UUID.randomUUID().toString());
-        // 移除了 homework.setCreateTime(LocalDateTime.now());
 
         // 处理附件
         if (attachmentFile != null && !attachmentFile.isEmpty()) {
@@ -116,39 +125,35 @@ public class HomeworkService extends ServiceImpl<HomeworkMapper, Homework> {
     }
 
     /**
-     * 批量下载作业
+     * 批量下载作业 (暂未实现具体打包逻辑，预留接口)
      */
     public File getHomeworkFilesZip(String homeworkId) {
-        // 这里需要实现将作业附件打包成ZIP的逻辑
-        // 由于时间关系，先返回null，你可以根据需要实现
         return null;
     }
 
     /**
-     * 保存作业文件
+     * 【修改】保存作业文件 - 使用正确的根路径
      */
     private String saveHomeworkFile(MultipartFile file, String subDir) throws IOException {
-        // 获取原始文件名
         String originalFilename = file.getOriginalFilename();
         String fileExtension = "";
         if (originalFilename != null && originalFilename.contains(".")) {
             fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
 
-        // 生成新文件名
         String newFilename = UUID.randomUUID().toString() + fileExtension;
 
-        // 构建存储路径
-        String projectRoot = System.getProperty("user.dir");
+        // 使用辅助方法获取正确的根路径
+        String projectRoot = getRealProjectRoot();
+
+        // 构建绝对存储路径
         String storagePath = Paths.get(projectRoot, "src/main/resources", uploadDir, "homework", subDir).toString();
 
-        // 创建目录
         File dir = new File(storagePath);
         if (!dir.exists()) {
             dir.mkdirs();
         }
 
-        // 保存文件
         Path filePath = Paths.get(storagePath, newFilename);
         file.transferTo(filePath.toFile());
 
@@ -157,20 +162,22 @@ public class HomeworkService extends ServiceImpl<HomeworkMapper, Homework> {
     }
 
     /**
-     * 获取作业附件文件
+     * 【修改】获取作业附件文件 - 使用正确的根路径
      */
     public File getHomeworkFile(String filePath) {
         if (filePath == null || filePath.isEmpty()) {
             return null;
         }
 
-        // 将相对路径转换为绝对路径
-        if (filePath.startsWith("/uploads/")) {
-            String projectRoot = System.getProperty("user.dir");
-            filePath = Paths.get(projectRoot, "src/main/resources", filePath.substring(1)).toString();
-        }
+        // 使用辅助方法获取正确的根路径
+        String projectRoot = getRealProjectRoot();
 
-        File file = new File(filePath);
+        // 拼接完整路径
+        // 假设 filePath 是 /uploads/homework/...
+        // 我们需要把它变成 .../spring-boot/src/main/resources/uploads/homework/...
+        Path fullPath = Paths.get(projectRoot, "src", "main", "resources", filePath.substring(1));
+
+        File file = fullPath.toFile();
         return file.exists() ? file : null;
     }
 }

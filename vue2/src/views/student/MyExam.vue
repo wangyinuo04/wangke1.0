@@ -336,12 +336,43 @@ export default {
       // 调用 API 获取试卷
       startExam(exam.id).then(res => {
         if (res.success) {
-          this.examQuestions = res.data;
-          // 初始化答案
+          console.log('📌 收到试卷原始数据:', res.data); // 【关键调试】看控制台输出什么
+
+          // 数据预处理与映射
+          this.examQuestions = res.data.map(q => {
+            // 1. 字段名兼容处理 (防止后端返回的是 Entity 字段而非 VO 字段)
+            // 如果没有 q.type，尝试取 q.questionType
+            if (!q.type && q.questionType) q.type = q.questionType;
+            // 如果没有 q.stem，尝试取 q.content
+            if (!q.stem && q.content) q.stem = q.content;
+            // 如果没有 q.id，尝试取 q.questionId
+            if (!q.id && q.questionId) q.id = q.questionId;
+
+            // 2. 选项解析逻辑
+            // 确保 type 存在且 options 是字符串才解析
+            if (q.type && (q.type.includes('单选') || q.type.includes('多选'))) {
+              if (typeof q.options === 'string') {
+                console.log(`正在解析题目[${q.id}]的选项:`, q.options); // 调试解析前的字符串
+                q.options = this.parseOptions(q.options);
+                console.log(`解析结果:`, q.options); // 调试解析后的数组
+              } else if (!q.options) {
+                // 如果 options 为空，给一个默认空数组防止报错
+                q.options = []; 
+                console.warn(`题目[${q.id}]没有选项数据`);
+              }
+            }
+            
+            // 3. 必须 return 处理后的对象
+            return q;
+          });
+
+          // 初始化答案对象
           this.answers = {};
           this.examQuestions.forEach(q => {
-            // Vue 需要 $set 才能响应式更新
-            this.$set(this.answers, q.id, q.type === '多选' ? [] : '');
+            // 注意：q.id 可能已经在上面被修正了，这里安全地使用 q.id
+            const key = q.id || q.questionId; 
+            // Vue 2 必须使用 $set 才能保证响应式
+            this.$set(this.answers, key, (q.type && q.type.includes('多选')) ? [] : '');
           });
           
           // 开始倒计时
@@ -427,7 +458,44 @@ export default {
     },
     closeResultModal() {
       this.showResultModal = false;
+    },
+    // 解析选项字符串的辅助函数 (增强版)
+    parseOptions(str) {
+      if (!str) return [];
+      // 先尝试按换行符分割
+      let lines = str.split(/\r?\n/);
+      
+      // 如果分割后只有1行，或者包含 "A." 但没有换行，可能是数据库里的换行符丢了
+      // 尝试按 "A." "B." 这种模式强制分割 (可选策略)
+      // 这里先保持按行分割，加强行内匹配正则
+      
+      return lines.map(line => {
+        line = line.trim();
+        if (!line) return null;
+        
+        // 正则说明：
+        // ^([A-Z])      -> 开头是 A-Z
+        // \s* -> 可能有的空格
+        // [.、\s:：]    -> 分隔符可以是 点、顿号、空格、冒号
+        // \s* -> 分隔符后的空格
+        // (.*)          -> 选项内容
+        const match = line.match(/^([A-Z])\s*[.、\s:：]\s*(.*)/);
+        
+        if (match) {
+          return {
+            key: match[1], // 选项字母 A
+            val: match[2]  // 选项内容
+          };
+        } else {
+          // 如果匹配不到 A. xxx 格式，看是否是单纯的内容
+          // 比如有的题库可能只有内容没有ABCD，这里做个保底
+          return { key: '', val: line };
+        }
+      }).filter(item => item !== null && item.val !== ''); // 过滤掉完全空的行
     }
+  
+
+  
   },
   beforeDestroy() {
     if (this.timer) clearInterval(this.timer);

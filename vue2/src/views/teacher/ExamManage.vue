@@ -246,143 +246,201 @@
     </div>
 
     <div class="modal-mask" v-if="showQuestionModal">
-      <div class="modal-box wide-modal">
+      <div class="modal-box modal-lg">
         <div class="modal-header">
           <h3>{{ qForm.questionId ? '编辑试题' : '新增试题' }}</h3>
           <span class="close-btn" @click="closeQuestionModal">×</span>
         </div>
         <div class="modal-body">
-          <form @submit.prevent="saveQuestion">
+          <form class="question-form" @submit.prevent>
             <div class="form-row">
-              <div class="form-group">
-                <label>题目类型 <span class="text-red">*</span></label>
-                <select v-model="qForm.questionType" @change="handleQuestionTypeChange">
+              <div class="form-group half">
+                <label>试题类型</label>
+                <select v-model="qForm.questionType" class="form-control" @change="handleQuestionTypeChange">
                   <option value="单选">单选题</option>
                   <option value="多选">多选题</option>
                   <option value="判断">判断题</option>
-                  <option value="简答">简答题 (主观)</option>
+                  <option value="简答">简答/主观题</option>
                 </select>
               </div>
-              <div class="form-group">
-                <label>难度 <span class="text-red">*</span></label>
-                <select v-model="qForm.difficulty">
-                  <option value="低">低</option>
-                  <option value="中">中</option>
-                  <option value="高">高</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>分值 <span class="text-red">*</span></label>
-                <input type="number" v-model.number="qForm.score" min="1" max="100" required>
+              <div class="form-group half">
+                <label>默认分值</label>
+                <input type="number" v-model.number="qForm.score" class="form-control" min="1">
               </div>
             </div>
 
             <div class="form-group">
-              <label>题干内容 <span class="text-red">*</span></label>
-              <textarea v-model="qForm.content" rows="3" required placeholder="请输入题干内容..."></textarea>
+              <label>题干内容 <span class="required">*</span></label>
+              <textarea v-model="qForm.content" class="form-control" rows="3" placeholder="请输入完整的问题描述..."></textarea>
             </div>
 
-            <div v-if="['单选', '多选'].includes(qForm.questionType)" class="form-group">
-              <label>
-                选项设置 <span class="text-red">*</span>
-                <button type="button" class="btn-add-option" @click="addChoiceOption">+ 新增选项</button>
-              </label>
-              <div class="options-container">
-                <div v-for="(option, index) in choiceOptions" :key="index" class="option-item">
-                  <span class="option-label">{{ getOptionLetter(index) }}.</span>
-                  <input type="text" v-model="choiceOptions[index]" :placeholder="`请输入选项${getOptionLetter(index)}的内容`" class="option-input">
-                  <button v-if="choiceOptions.length > 2" type="button" class="btn-remove-option" @click="removeChoiceOption(index)">×</button>
+            <div class="dynamic-section">
+              <div v-if="['单选', '多选'].includes(qForm.questionType)">
+                <label class="section-label">选项设置</label>
+                <div class="option-item" v-for="(opt, idx) in choiceOptions" :key="idx">
+                  <span class="opt-badge">{{ getOptionLetter(idx) }}</span>
+                  <input type="text" v-model="choiceOptions[idx]" class="form-control" :placeholder="'输入选项 ' + getOptionLetter(idx) + ' 的内容'">
+                  <button v-if="choiceOptions.length > 2" class="btn-text btn-danger" style="margin-left: 10px;" @click="removeChoiceOption(idx)">×</button>
                 </div>
-              </div>
-              <div class="form-group">
-                <label>正确答案 <span class="text-red">*</span> <small class="text-gray">(点击字母选择)</small></label>
-                <div class="answer-options">
-                  <div v-for="(option, index) in choiceOptions" :key="index" class="answer-option"
-                    :class="{ 'selected': isLetterSelected(getOptionLetter(index)) }"
-                    @click="toggleChoiceAnswer(getOptionLetter(index))">
-                    {{ getOptionLetter(index) }}
+                <button class="btn-text btn-primary" v-if="choiceOptions.length < 8" @click="addChoiceOption">+ 添加选项</button>
+                
+                <div class="form-group mt-2">
+                  <label>正确答案 ({{ qForm.questionType }})</label>
+                  <div class="radio-group-box">
+                    <label class="radio-label" v-for="(opt, idx) in choiceOptions" :key="'ans-'+idx">
+                      <input 
+                        :type="qForm.questionType === '单选' ? 'radio' : 'checkbox'" 
+                        :checked="isLetterSelected(getOptionLetter(idx))"
+                        @click="toggleChoiceAnswer(getOptionLetter(idx))"
+                        name="correctAnswer"
+                      >
+                      <span>选项 {{ getOptionLetter(idx) }}</span>
+                    </label>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div v-if="qForm.questionType === '判断'" class="form-group">
-              <label>正确答案 <span class="text-red">*</span></label>
-              <div class="answer-options">
-                <div class="answer-option" :class="{ 'selected': judgeAnswer === 'A' }" @click="judgeAnswer = 'A'">A (正确)</div>
-                <div class="answer-option" :class="{ 'selected': judgeAnswer === 'B' }" @click="judgeAnswer = 'B'">B (错误)</div>
+              <div v-if="qForm.questionType === '判断'" class="judge-section">
+                <label class="section-label">正确答案</label>
+                <div class="radio-group-box">
+                  <label class="radio-label success">
+                    <input type="radio" v-model="judgeAnswer" value="A">
+                    <span class="icon">✔</span> <span>正确 (True)</span>
+                  </label>
+                  <label class="radio-label error">
+                    <input type="radio" v-model="judgeAnswer" value="B">
+                    <span class="icon">✖</span> <span>错误 (False)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div v-if="qForm.questionType === '简答'">
+                <div class="form-group">
+                  <label>参考答案 (关键词)</label>
+                  <textarea v-model="qForm.correctAnswer" class="form-control" rows="3" placeholder="请输入参考答案或评分标准..."></textarea>
+                </div>
               </div>
             </div>
 
-            <div class="form-group">
-              <label>题目解析</label>
-              <textarea v-model="qForm.explanation" rows="2" placeholder="输入题目解析，用于讲解和说明"></textarea>
+            <div class="form-group mt-2">
+              <label>题目解析 (选填)</label>
+              <textarea v-model="qForm.explanation" class="form-control form-gray" rows="2" placeholder="输入题目解析，帮助学生理解..."></textarea>
             </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" @click="closeQuestionModal">取消</button>
-              <button type="submit" class="btn btn-primary">保存</button>
-            </div>
           </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-text" @click="closeQuestionModal">取消</button>
+          <button class="btn btn-primary" @click="saveQuestion">保存试题</button>
         </div>
       </div>
     </div>
 
     <div class="modal-mask" v-if="showPaperModal">
-      <div class="modal-box wide-modal-xl">
+      <div class="modal-box modal-xl">
         <div class="modal-header">
           <h3>组建新试卷</h3>
           <span class="close-btn" @click="closePaperModal">×</span>
         </div>
-        <div class="modal-body paper-modal-body">
-          <div class="form-row">
-            <div class="form-group">
+        
+        <div class="modal-body paper-composer">
+          <div class="composer-header">
+            <div class="form-group" style="flex: 2;">
               <label>试卷标题 <span class="text-red">*</span></label>
-              <input type="text" v-model="paperForm.paperTitle" placeholder="例：期中测试A卷" required>
+              <input type="text" v-model="paperForm.paperName" class="form-control" placeholder="请输入试卷名称，如：2023期末考试A卷">
             </div>
-            <div class="form-group">
+            <div class="form-group" style="flex: 1;">
               <label>所属课程 <span class="text-red">*</span></label>
-              <select v-model="paperForm.courseId" required>
-                <option value="">请选择课程</option>
-                <option v-for="course in teacherCourses" :key="course.courseId" :value="course.courseId">
-                  {{ course.courseName }}
-                </option>
+              <select v-model="paperForm.courseId" class="form-control" @change="handlePaperCourseChange">
+                <option value="" disabled>请选择课程</option>
+                <option v-for="c in teacherCourses" :key="c.courseId" :value="c.courseId">{{ c.courseName }}</option>
               </select>
+            </div>
+            <div class="form-group score-display" style="flex: 1; text-align: right;">
+              <label>当前总分</label>
+              <div class="total-score-box">{{ currentTotalScore }} 分</div>
             </div>
           </div>
 
-          <div class="full-height-group">
-            <label>
-              勾选题目 (当前已选总分: <span class="score-green">{{ paperTotalScore }}</span> 分)
-            </label>
-            <div class="question-selector-large">
-              <div v-for="type in questionTypes" :key="type" class="selector-group">
-                <div class="group-title">{{ type }}题</div>
-                <div v-if="getQuestionsByType(type).length === 0" class="empty-group">暂无{{ type }}题</div>
-                <div v-else>
-                  <div v-for="q in getQuestionsByType(type)" :key="q.questionId" class="q-item-row"
-                    :class="{ 'selected': paperForm.questionIds.includes(q.questionId) }">
-                    <div class="check-col">
-                      <input type="checkbox" :value="q.questionId" v-model="paperForm.questionIds">
+          <div class="composer-content">
+            <div class="panel source-panel">
+              <div class="panel-header">
+                <span class="title">📖 题库列表</span>
+                <select v-model="filterType" class="filter-select">
+                  <option value="">所有题型</option>
+                  <option value="单选">单选题</option>
+                  <option value="多选">多选题</option>
+                  <option value="判断">判断题</option>
+                  <option value="简答">简答题</option>
+                </select>
+              </div>
+              
+              <div class="question-list-container">
+                <div v-if="courseQuestions.length === 0" class="empty-placeholder">
+                  {{ paperForm.courseId ? '该课程暂无试题' : '请先选择课程以加载试题' }}
+                </div>
+
+                <div 
+                  v-for="q in courseQuestions" 
+                  :key="q.questionId" 
+                  class="q-card-mini"
+                  v-show="!filterType || q.questionType === filterType"
+                >
+                  <div class="q-info">
+                    <div class="q-meta">
+                      <span class="tag-type">{{ q.questionType }}</span>
+                      <span class="tag-diff" :class="getDifficultyClass(q.difficulty)">{{ q.difficulty }}</span>
+                      <span class="tag-score">{{ q.score }}分</span>
                     </div>
-                    <div class="content-col">
-                      <span class="q-text">{{ q.content }}</span>
-                    </div>
-                    <div class="info-col">
-                      <span class="score-tag">{{ q.score }}分</span>
-                    </div>
+                    <div class="q-text text-ellipsis" :title="q.content">{{ q.content }}</div>
                   </div>
+                  <button 
+                    class="btn-icon-add" 
+                    @click="addQuestionToPaper(q)"
+                    :disabled="isQuestionSelected(q.questionId)"
+                    :class="{ 'disabled': isQuestionSelected(q.questionId) }"
+                  >
+                    {{ isQuestionSelected(q.questionId) ? '✔' : '+' }}
+                  </button>
                 </div>
               </div>
             </div>
+
+            <div class="divider-arrow">➡</div>
+
+            <div class="panel target-panel">
+              <div class="panel-header">
+                <span class="title">📋 已选试题 ({{ paperForm.questions.length }})</span>
+                <button class="btn-text btn-danger" @click="clearSelectedQuestions" style="font-size:12px;">清空</button>
+              </div>
+              
+              <div class="question-list-container">
+                <div v-if="paperForm.questions.length === 0" class="empty-placeholder">
+                  暂未选择试题
+                </div>
+
+                <div v-for="(q, index) in paperForm.questions" :key="q.questionId" class="q-card-selected">
+                  <div class="q-order">{{ index + 1 }}.</div>
+                  <div class="q-info">
+                    <div class="q-text-sm">{{ q.content }}</div>
+                    <div class="q-meta-sm">
+                      {{ q.questionType }} | {{ q.score }}分
+                    </div>
+                  </div>
+                  <button class="btn-icon-remove" @click="removeQuestionFromPaper(index)">×</button>
+                </div>
+              </div>
+            </div>
+            
           </div>
         </div>
+
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="closePaperModal">取消</button>
-          <button type="button" class="btn btn-primary" @click="savePaper"
-            :disabled="!paperForm.paperTitle || paperForm.questionIds.length === 0">
-            完成组卷
-          </button>
+          <div class="footer-tip">提示：点击左侧 "+" 添加试题，点击右侧 "×" 移除试题</div>
+          <div>
+            <button class="btn btn-secondary" @click="closePaperModal">取消</button>
+            <button class="btn btn-primary" @click="submitCreatePaper">确认创建</button>
+          </div>
         </div>
       </div>
     </div>
@@ -480,7 +538,6 @@
 </template>
 
 <script>
-// 导入 API
 import {
   getQuestionList, addQuestion, updateQuestion, deleteQuestion, getQuestionsByCourse,
   getExamList, addExam, deleteExam,
@@ -547,13 +604,17 @@ export default {
       selectedLetters: [],
       judgeAnswer: '',
 
-      // 试卷表单
+      // --- 组卷表单 (修复部分) ---
       paperForm: {
-        paperTitle: '',
+        paperName: '',
         courseId: '',
-        questionIds: [],
+        questions: [], // 存储选中的题目对象 (前端用)
+        questionIds: [], // 存储选中的ID (传给后端用)
         totalScore: 0
       },
+      courseQuestions: [], // 左侧题库列表
+      currentTotalScore: 0, // 当前计算的总分
+      filterType: '', // 左侧类型筛选
 
       // 考试表单
       examForm: {
@@ -576,11 +637,6 @@ export default {
     },
     isLetterSelected() {
       return (letter) => this.selectedLetters.includes(letter);
-    },
-    paperTotalScore() {
-      return this.questions
-        .filter(q => this.paperForm.questionIds.includes(q.questionId))
-        .reduce((sum, q) => sum + q.score, 0);
     },
     filteredPapers() {
       if (!this.examForm.classId) return []
@@ -767,26 +823,111 @@ export default {
       }
     },
 
-    // --- 3. 试卷操作 ---
+    // --- 3. 试卷操作 (组卷功能修复) ---
+    
+    // 打开组卷弹窗
     openPaperModal() {
       if (!this.currentTeacher) return this.$message.error('请登录');
+      
+      // 1. 重置表单
       this.paperForm = {
-        paperTitle: '',
+        paperName: '', 
         courseId: this.selectedCourseId || (this.teacherCourses[0]?.courseId || ''),
+        questions: [], // 必须初始化为空数组
         questionIds: [],
         totalScore: 0
       };
+      
+      this.currentTotalScore = 0; // 重置总分
+      this.courseQuestions = [];  // 重置备选列表
+      this.filterType = ''; // 重置筛选
+
+      // 2. 打开弹窗
       this.showPaperModal = true;
+
+      // 3. 如果有默认课程，立即加载该课程的题库
+      if (this.paperForm.courseId) {
+        this.handlePaperCourseChange();
+      }
     },
+    
     closePaperModal() { this.showPaperModal = false; },
 
-    async savePaper() {
-      this.paperForm.totalScore = this.paperTotalScore;
-      const res = await addPaper(this.paperForm);
-      if (res.success) {
-        this.$message.success('组卷成功');
-        this.closePaperModal();
-        this.fetchPapers();
+    // 切换课程时加载题库
+    async handlePaperCourseChange() {
+      if (!this.paperForm.courseId) return;
+      // 清空左侧列表
+      this.courseQuestions = [];
+      try {
+        // 调用后端接口获取该课程所有试题
+        const res = await getQuestionsByCourse(this.paperForm.courseId);
+        if (res.success) {
+          this.courseQuestions = res.data || [];
+        }
+      } catch (e) {
+        this.$message.error('加载试题库失败');
+      }
+    },
+
+    // 添加试题到试卷
+    addQuestionToPaper(question) {
+      // 查重：防止重复添加
+      const exists = this.paperForm.questions.find(q => q.questionId === question.questionId);
+      if (exists) return;
+
+      // 推入右侧数组
+      this.paperForm.questions.push(question);
+      // 更新实时总分
+      this.updateCurrentTotalScore();
+    },
+
+    // 从试卷中移除试题
+    removeQuestionFromPaper(index) {
+      this.paperForm.questions.splice(index, 1);
+      this.updateCurrentTotalScore();
+    },
+
+    // 辅助判断：是否已选中
+    isQuestionSelected(id) {
+      return this.paperForm.questions.some(q => q.questionId === id);
+    },
+
+    // 清空已选
+    clearSelectedQuestions() {
+      this.paperForm.questions = [];
+      this.updateCurrentTotalScore();
+    },
+
+    // 更新总分
+    updateCurrentTotalScore() {
+      this.currentTotalScore = this.paperForm.questions.reduce((sum, q) => sum + (q.score || 0), 0);
+    },
+
+    // 提交创建试卷
+    async submitCreatePaper() {
+      if (!this.paperForm.paperName) return this.$message.error('请输入试卷标题');
+      if (!this.paperForm.courseId) return this.$message.error('请选择所属课程');
+      if (this.paperForm.questions.length === 0) return this.$message.error('请至少选择一道试题');
+
+      // 构造 Payload
+      const payload = {
+        paperTitle: this.paperForm.paperName, // 后端字段名通常是 paperTitle
+        courseId: this.paperForm.courseId,
+        totalScore: this.currentTotalScore,
+        // 提取 ID 列表
+        questionIds: this.paperForm.questions.map(q => q.questionId),
+        paperStatus: '已发布' // 或 '草稿'，视需求而定
+      };
+
+      try {
+        const res = await addPaper(payload);
+        if (res.success) {
+          this.$message.success('试卷创建成功');
+          this.closePaperModal();
+          this.fetchPapers(); // 刷新列表
+        }
+      } catch (e) {
+        this.$message.error('创建失败: ' + (e.message || '未知错误'));
       }
     },
 
@@ -814,20 +955,14 @@ export default {
     closeExamModal() { this.showExamModal = false; },
 
     async saveExam() {
-      // 复制表单数据
       const examData = { ...this.examForm };
       
-      // ✅ 修改点 1: 保持 ISO 格式 (带 T)，只补全秒数
-      // 浏览器 datetime-local 控件的值格式为 "yyyy-MM-ddTHH:mm"
-      // 后端默认 LocalDateTime 解析需要 "yyyy-MM-ddTHH:mm:ss"
+      // 时间格式处理
       if (examData.startTime && examData.startTime.length === 16) {
          examData.startTime = examData.startTime + ':00';
       }
-      
-      // ✅ 修改点 2: 确保 timeLimit 是数字类型
       examData.timeLimit = parseInt(examData.timeLimit);
 
-      // 发送请求
       const res = await addExam(examData);
       if (res.success) {
         this.$message.success('发布成功');
@@ -901,15 +1036,28 @@ export default {
     getTeachingClassName(id) { return this.teachingClasses.find(t => t.classId === id)?.className || '未知班级'; },
     
     getPaperStatusClass(status) { return status === '已发布' ? 'status-published' : 'status-draft'; },
+    
     getExamStatusClass(exam) {
-      const now = new Date();
-      const start = new Date(exam.startTime);
-      return now < start ? 'status-draft' : 'status-published';
+      const status = this.getExamStatusText(exam);
+      if (status === '未开始') return 'status-future'; 
+      if (status === '进行中') return 'status-published'; 
+      return 'status-draft'; 
     },
+
     getExamStatusText(exam) {
       const now = new Date();
       const start = new Date(exam.startTime);
-      return now < start ? '未开始' : '进行中/已结束';
+      let end;
+      if (exam.endTime) {
+        end = new Date(exam.endTime);
+      } else {
+        const limitMinutes = parseInt(exam.timeLimit) || 0;
+        end = new Date(start.getTime() + limitMinutes * 60 * 1000);
+      }
+
+      if (now < start) return '未开始';
+      if (now > end) return '已结束';
+      return '进行中';
     },
     getDifficultyClass(d) { return d === '高' ? 'text-red' : (d === '中' ? 'text-orange' : 'text-green'); },
     getSubmissionStatusClass(sub) { return sub.examStatus === '已批改' ? 'status-published' : 'status-draft'; },
@@ -923,7 +1071,6 @@ export default {
       try {
         const obj = JSON.parse(jsonStr);
         if(typeof obj === 'string') return obj;
-        // 如果是对象 {Q_01: "答案"}，取值展示
         return Object.values(obj).join('\n\n') || '未作答';
       } catch(e) {
         return jsonStr || '未作答';
@@ -942,6 +1089,7 @@ export default {
 </script>
 
 <style scoped>
+/* 保持原有样式不变 */
 /* 基础容器 */
 .manage-container { padding: 0; background: #f5f7fa; min-height: 100vh; display: flex; flex-direction: column; }
 
@@ -976,6 +1124,7 @@ export default {
 .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
 .status-draft { background: #f4f4f5; color: #909399; }
 .status-published { background: #f6ffed; color: #52c41a; }
+.status-future { background: #e6f7ff; color: #1890ff; }
 .text-green { color: #52c41a; }
 .text-red { color: #f5222d; }
 .text-orange { color: #e6a23c; }
@@ -1005,27 +1154,55 @@ export default {
 /* 弹窗样式 */
 .modal-mask { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center; }
 .modal-box { background: white; width: 600px; max-height: 85vh; display: flex; flex-direction: column; border-radius: 8px; }
-.wide-modal { width: 700px; }
-.wide-modal-xl { width: 900px; }
+.modal-box.modal-lg { width: 700px; max-width: 95vw; }
+.modal-box.modal-xl { width: 900px; max-width: 95vw; }
 .grading-modal { width: 800px; }
+
 .modal-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
 .modal-body { padding: 20px; overflow-y: auto; }
-.modal-footer { padding: 15px; border-top: 1px solid #eee; text-align: right; }
+.modal-footer { padding: 15px; border-top: 1px solid #eee; text-align: right; display: flex; justify-content: space-between; align-items: center; }
+.footer-tip { font-size: 12px; color: #909399; }
 .close-btn { cursor: pointer; font-size: 20px; }
 
 /* 表单元素 */
-.form-row { display: flex; gap: 20px; margin-bottom: 15px; }
+.form-row { display: flex; gap: 20px; margin-bottom: 15px; justify-content: space-between; }
 .form-group { margin-bottom: 15px; flex: 1; }
+.form-group.half { flex: 1; }
 .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
-.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box; }
+.form-control { width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box; }
+.form-control:focus { border-color: #409eff; outline: none; }
+.form-gray { background: #fafafa; }
+.required { color: #f56c6c; margin-left: 4px; }
 
-/* 组卷选择器 */
-.question-selector-large { height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-top: 10px; }
-.q-item-row { display: flex; padding: 8px; border-bottom: 1px solid #eee; align-items: center; }
-.q-item-row:hover { background: #f5f7fa; }
-.check-col { margin-right: 10px; }
-.content-col { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.score-green { color: #52c41a; font-weight: bold; }
+/* 组卷 - 左右布局 */
+.paper-composer { display: flex; flex-direction: column; height: 70vh; }
+.composer-header { display: flex; gap: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; align-items: flex-end; }
+.composer-content { display: flex; flex: 1; gap: 15px; overflow: hidden; }
+
+.panel { flex: 1; display: flex; flex-direction: column; border: 1px solid #e4e7ed; border-radius: 4px; background: #fff; }
+.panel-header { padding: 10px; background: #f5f7fa; border-bottom: 1px solid #e4e7ed; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+.question-list-container { flex: 1; overflow-y: auto; padding: 10px; background: #fafafa; }
+.empty-placeholder { text-align: center; color: #c0c4cc; margin-top: 50px; }
+
+.divider-arrow { display: flex; align-items: center; color: #909399; font-weight: bold; font-size: 20px; }
+
+/* 题目卡片 */
+.q-card-mini, .q-card-selected { background: #fff; padding: 10px; border: 1px solid #ebeef5; border-radius: 4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; transition: all 0.2s; }
+.q-card-mini:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-color: #c6e2ff; }
+.q-info { flex: 1; overflow: hidden; }
+.q-meta { font-size: 12px; margin-bottom: 4px; display: flex; gap: 5px; align-items: center; }
+.q-text { font-size: 13px; color: #303133; }
+.q-text-sm { font-size: 12px; margin-bottom: 4px; }
+.q-meta-sm { font-size: 12px; color: #909399; }
+.btn-icon-add, .btn-icon-remove { width: 24px; height: 24px; border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-left: 8px; flex-shrink: 0; }
+.btn-icon-add { background: #f0f9eb; color: #67c23a; }
+.btn-icon-add:hover { background: #67c23a; color: white; }
+.btn-icon-add.disabled { background: #f4f4f5; color: #909399; cursor: not-allowed; }
+.btn-icon-remove { background: #fef0f0; color: #f56c6c; }
+.btn-icon-remove:hover { background: #f56c6c; color: white; }
+.q-order { font-weight: bold; color: #1890ff; margin-right: 8px; font-size: 14px; }
+
+.total-score-box { font-size: 24px; font-weight: bold; color: #1890ff; }
 
 /* 批改详情 */
 .student-bar { background: #e6f7ff; padding: 10px; border-radius: 4px; margin-bottom: 15px; display: flex; justify-content: space-between; }
@@ -1035,11 +1212,15 @@ export default {
 .score-input-lg { width: 80px; font-size: 18px; text-align: center; border: 2px solid #1890ff; padding: 5px; border-radius: 4px; color: #1890ff; font-weight: bold; }
 
 /* 选项管理 */
-.options-container { margin-bottom: 10px; }
-.option-item { display: flex; align-items: center; margin-bottom: 8px; }
-.option-label { width: 30px; font-weight: bold; }
-.btn-remove-option { color: red; cursor: pointer; margin-left: 5px; border: none; background: none; font-size: 16px; }
-.answer-options { display: flex; gap: 10px; }
-.answer-option { width: 30px; height: 30px; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 4px; }
-.answer-option.selected { background: #1890ff; color: white; border-color: #1890ff; }
+.option-item { display: flex; align-items: center; margin-bottom: 10px; }
+.opt-badge { width: 28px; height: 28px; background: #f0f2f5; color: #606266; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold; font-size: 12px; flex-shrink: 0; }
+.radio-group-box { display: flex; gap: 20px; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px dashed #dcdfe6; }
+.radio-label { display: flex; align-items: center; cursor: pointer; padding: 5px 10px; border-radius: 4px; transition: background 0.2s; }
+.radio-label:hover { background: #eef1f6; }
+.radio-label input { margin-right: 8px; cursor: pointer; }
+.radio-label .icon { margin-right: 6px; font-weight: bold; }
+.radio-label.success .icon { color: #67c23a; }
+.radio-label.error .icon { color: #f56c6c; }
+.section-label { font-size: 13px; color: #909399; margin-bottom: 10px; border-bottom: 1px solid #ebeef5; padding-bottom: 5px; display: block; }
+.mt-2 { margin-top: 20px; }
 </style>

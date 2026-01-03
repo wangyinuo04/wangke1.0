@@ -19,13 +19,18 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+// 新增（如果没导包的话）
+import org.springframework.web.bind.annotation.CrossOrigin;
 
 @RestController
 @RequestMapping("/api/homework")
+@CrossOrigin // <--- 1. 新增：允许跨域请求（默认允许所有来源）
 public class HomeworkController {
 
     @Autowired
     private HomeworkService homeworkService;
+
+
 
     /**
      * 获取教师发布的作业列表
@@ -155,29 +160,33 @@ public class HomeworkController {
     }
 
     /**
-     * 下载作业附件
+     * 下载作业附件 (已修复跨域和路径参数问题)
      */
-    @GetMapping("/download/{filePath}")
-    public void downloadHomeworkFile(@PathVariable String filePath, HttpServletResponse response) {
+    @GetMapping("/download")
+    public void downloadHomeworkFile(@RequestParam("filePath") String filePath, HttpServletResponse response) {
         try {
             File file = homeworkService.getHomeworkFile(filePath);
+
             if (file == null || !file.exists()) {
                 response.sendError(404, "文件不存在");
                 return;
             }
 
-            // 设置响应头
             String contentType = Files.probeContentType(file.toPath());
             if (contentType == null) {
                 contentType = "application/octet-stream";
             }
 
             response.setContentType(contentType);
+
+            // 解决中文文件名乱码
+            String fileName = file.getName();
+            String encodedFileName = java.net.URLEncoder.encode(fileName, "UTF-8").replaceAll("\\+", "%20");
             response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
-                    "attachment; filename=\"" + file.getName() + "\"");
+                    "attachment; filename*=UTF-8''" + encodedFileName);
+
             response.setContentLengthLong(file.length());
 
-            // 传输文件
             try (InputStream inputStream = new FileInputStream(file)) {
                 byte[] buffer = new byte[4096];
                 int bytesRead;

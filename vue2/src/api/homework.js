@@ -62,8 +62,9 @@ export function gradeHomework(submissionId, score, feedback) {
 // 下载作业附件
 export function downloadHomeworkFile(filePath) {
   return request({
-    url: `/api/homework/download/${encodeURIComponent(filePath)}`,
+    url: '/api/homework/download', // <--- 修改：去掉 url 后面的动态参数
     method: 'get',
+    params: { filePath }, // <--- 新增：通过 params 传递，axios 会自动拼接成 ?filePath=...
     responseType: 'blob'
   })
 }
@@ -113,3 +114,4 @@ export function submitHomework(formData) {
     }
   })
 }
+

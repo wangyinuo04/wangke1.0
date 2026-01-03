@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/exam")
@@ -40,14 +42,11 @@ public class ExamController {
     private QuestionMapper questionMapper;
     @Autowired
     private ExamMapper examMapper;
-
-    // 👇👇👇 补上这一行！ 👇👇👇
     @Autowired
     private StudentMapper studentMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // ... 后面的代码保持不变 ...
     // ==========================================
     // Part 1: 学生端接口 (考试核心流程)
     // ==========================================
@@ -131,7 +130,6 @@ public class ExamController {
 
     /**
      * 2. 开始考试：获取试卷内容 (隐藏答案)
-     * 同时也是教师预览试卷题目的接口（复用）
      */
     @GetMapping("/student/paper/{examId}")
     public Map<String, Object> startExam(@PathVariable String examId, HttpSession session) {
@@ -188,21 +186,22 @@ public class ExamController {
                     vo.setType(q.getQuestionType());
                     vo.setScore(q.getScore());
 
-                    // 如果是教师，可以返回正确答案以便阅卷时参考（可选）
-                    if (userObj instanceof Teacher) {
-                        // 可以在 ExamQuestionVO 里加一个 correctAnswer 字段，或者复用其他方式
-                        // 这里暂时不加，教师阅卷在前端有单独逻辑显示参考答案
-                    }
+                    // --- 核心修复：智能解析选项 ---
+                    String optionsStr = q.getOptions();
+                    List<Map<String, Object>> opts = new ArrayList<>();
 
-                    // 解析选项 JSON -> List
-                    if (q.getOptions() != null && !q.getOptions().isEmpty()) {
+                    if (optionsStr != null && !optionsStr.trim().isEmpty()) {
                         try {
-                            List<Map<String, Object>> opts = objectMapper.readValue(q.getOptions(), new TypeReference<List<Map<String, Object>>>(){});
-                            vo.setOptions(opts);
+                            // 1. 尝试按 JSON 解析 (兼容旧数据)
+                            opts = objectMapper.readValue(optionsStr, new TypeReference<List<Map<String, Object>>>(){});
                         } catch (Exception e) {
-                            vo.setOptions(new ArrayList<>());
+                            // 2. 如果 JSON 失败，说明是文本格式 (如 "A. xxx\nB. xxx")，手动解析
+                            opts = parseOptionsFromText(optionsStr);
                         }
                     }
+                    vo.setOptions(opts);
+                    // ---------------------------
+
                     questions.add(vo);
                 }
             }
@@ -215,6 +214,39 @@ public class ExamController {
             result.put("message", e.getMessage());
         }
         return result;
+    }
+
+    /**
+     * 【辅助方法】解析文本格式的选项
+     */
+    private List<Map<String, Object>> parseOptionsFromText(String text) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        if (text == null) return list;
+
+        // 按换行符分割
+        String[] lines = text.split("\n");
+        Pattern pattern = Pattern.compile("^([A-Z])[:\\.\\、\\s]\\s*(.*)");
+
+        for (String line : lines) {
+            line = line.trim();
+            if (line.isEmpty()) continue;
+
+            Matcher matcher = pattern.matcher(line);
+            if (matcher.find()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("key", matcher.group(1)); // 选项字母
+                map.put("val", matcher.group(2)); // 选项内容
+                list.add(map);
+            } else {
+                // 如果匹配不到 A. xxx 格式，尝试作为纯文本选项处理（兼容性）
+                // 某些情况下可能没有选项头
+                Map<String, Object> map = new HashMap<>();
+                map.put("key", "");
+                map.put("val", line);
+                list.add(map);
+            }
+        }
+        return list;
     }
 
     /**
@@ -256,10 +288,11 @@ public class ExamController {
                             List<String> ansList = (List<String>) studentAns;
                             Collections.sort(ansList);
                             String joined = String.join(",", ansList);
-                            if (joined.equalsIgnoreCase(standardAns)) isCorrect = true;
+                            // 简单比较，实际可能需要去除空格
+                            if (joined.replace(" ", "").equalsIgnoreCase(standardAns.replace(" ", ""))) isCorrect = true;
                         }
                     } else {
-                        if (studentAns.toString().equalsIgnoreCase(standardAns)) isCorrect = true;
+                        if (studentAns.toString().trim().equalsIgnoreCase(standardAns.trim())) isCorrect = true;
                     }
 
                     if (isCorrect) {
@@ -365,7 +398,7 @@ public class ExamController {
                         Collections.sort(l);
                         myAnsStr = String.join(",", l);
                     }
-                    if (myAnsStr.equalsIgnoreCase(q.getCorrectAnswer())) isCorrect = true;
+                    if (myAnsStr.trim().equalsIgnoreCase(q.getCorrectAnswer().trim())) isCorrect = true;
                 }
                 item.put("isCorrect", isCorrect);
 
@@ -384,19 +417,14 @@ public class ExamController {
         return result;
     }
 
-
     // ==========================================
-    // Part 2: 教师端接口 (补回之前丢失的接口)
+    // Part 2: 教师端接口
     // ==========================================
 
-    /**
-     * 获取考试列表（教师端）- 修复 404 错误的关键！
-     */
     @GetMapping("/list")
     public Map<String, Object> getExamList(@RequestParam(required = false) String teacherId) {
         Map<String, Object> result = new HashMap<>();
         try {
-            // 调用 Service 获取列表
             List<Exam> exams = examService.getExamsByTeacher(teacherId);
             result.put("success", true);
             result.put("data", exams);
@@ -409,27 +437,19 @@ public class ExamController {
         return result;
     }
 
-    /**
-     * 补全缺失接口：获取某场考试的所有考生成绩列表
-     * 对应前端请求: /api/exam/{examId}/submissions
-     */
     @GetMapping("/{examId}/submissions")
     public Map<String, Object> getExamSubmissions(@PathVariable String examId) {
         Map<String, Object> result = new HashMap<>();
         try {
-            // 1. 直接查询参与记录表
             QueryWrapper<ExamParticipation> query = new QueryWrapper<>();
             query.eq("exam_id", examId);
-            // 按提交时间倒序
             query.orderByDesc("submit_time");
             List<ExamParticipation> list = participationMapper.selectList(query);
 
-            // 2. 补全学生姓名（因为参与表里只有 student_id）
             for (ExamParticipation p : list) {
                 Student s = studentMapper.selectById(p.getStudentId());
                 if (s != null) {
                     p.setStudentName(s.getName());
-                    // 如果有头像等其他信息也可以在这里设置
                 } else {
                     p.setStudentName("未知学生");
                 }
@@ -446,15 +466,11 @@ public class ExamController {
         return result;
     }
 
-    /**
-     * 获取待批改列表
-     */
     @GetMapping("/{examId}/pending-grading")
     public Map<String, Object> getPendingGrading(@PathVariable String examId) {
         Map<String, Object> result = new HashMap<>();
         try {
             List<ExamParticipation> pendingList = examParticipationService.getPendingGrading(examId);
-            // 补充学生姓名
             for (ExamParticipation p : pendingList) {
                 Student s = studentMapper.selectById(p.getStudentId());
                 p.setStudentName(s != null ? s.getName() : "未知学生");
@@ -469,9 +485,6 @@ public class ExamController {
         return result;
     }
 
-    /**
-     * 获取考试统计
-     */
     @GetMapping("/{examId}/stats")
     public Map<String, Object> getExamStats(@PathVariable String examId) {
         Map<String, Object> result = new HashMap<>();
@@ -487,16 +500,12 @@ public class ExamController {
         return result;
     }
 
-    /**
-     * 提交主观题评分
-     */
     @PostMapping("/submission/grade")
     public Map<String, Object> submitGrade(@RequestBody Map<String, Object> requestData) {
         Map<String, Object> result = new HashMap<>();
         try {
             String studentId = (String) requestData.get("studentId");
             String examId = (String) requestData.get("examId");
-            // 兼容 Float 和 Integer
             float subjectiveScore = Float.parseFloat(requestData.get("subjectiveScore").toString());
 
             boolean success = examParticipationService.submitSubjectiveScore(studentId, examId, subjectiveScore);
@@ -516,15 +525,11 @@ public class ExamController {
         return result;
     }
 
-    /**
-     * 删除考试
-     */
     @DeleteMapping("/delete/{examId}")
     public Map<String, Object> deleteExam(@PathVariable String examId) {
         Map<String, Object> result = new HashMap<>();
         try {
             examMapper.deleteById(examId);
-            // 注意：实际业务可能需要级联删除参与记录，这里简化处理
             result.put("success", true);
             result.put("message", "删除成功");
         } catch (Exception e) {
@@ -534,37 +539,23 @@ public class ExamController {
         return result;
     }
 
-    /**
-     * 发布考试 (如果之前有逻辑，请保留，这里提供基础实现)
-     */
-    /**
-     * 发布考试
-     * 修复点：自动计算 endTime，处理 ID 生成
-     */
     @PostMapping("/publish")
     public Map<String, Object> publishExam(@RequestBody Exam exam) {
         Map<String, Object> result = new HashMap<>();
         try {
-            // 1. 生成 ID
             if (exam.getExamId() == null || exam.getExamId().trim().isEmpty()) {
                 exam.setExamId(UUID.randomUUID().toString().replace("-", ""));
             }
-
-            // 2. 关键修复：根据“开始时间”和“时长”自动计算“结束时间”
             if (exam.getStartTime() != null && exam.getTimeLimit() != null) {
-                // timeLimit 单位是分钟
                 exam.setEndTime(exam.getStartTime().plusMinutes(exam.getTimeLimit()));
             } else {
                 throw new Exception("开始时间或考试时长不能为空");
             }
-
-            // 3. 插入数据库
             examMapper.insert(exam);
-
             result.put("success", true);
             result.put("message", "发布成功");
         } catch (Exception e) {
-            e.printStackTrace(); // 在控制台打印详细错误，方便调试
+            e.printStackTrace();
             result.put("success", false);
             result.put("message", "发布失败：" + e.getMessage());
         }

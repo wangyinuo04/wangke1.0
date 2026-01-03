@@ -58,7 +58,52 @@
       <div class="modal-box">
           <div class="modal-header"><h3>发布新作业</h3><span class="close-btn" @click="closeCreateModal">×</span></div>
           <div class="modal-body">
-              <p style="text-align:center;color:#999;">(此处保留原有发布表单)</p>
+              <div class="form-group">
+                <label>作业标题 <span class="text-red">*</span></label>
+                <input type="text" v-model="createForm.homeworkTitle" class="form-control" placeholder="请输入作业标题">
+              </div>
+
+              <div class="form-row">
+                <div class="form-group half">
+                  <label>发布对象 <span class="text-red">*</span></label>
+                  <select v-model="createForm.classId" class="form-control">
+                    <option value="" disabled>请选择教学班</option>
+                    <option v-for="cls in teachingClasses" :key="cls.id" :value="cls.id">
+                      {{ cls.className }} ({{ cls.courseName }})
+                    </option>
+                  </select>
+                </div>
+                <div class="form-group half">
+                  <label>满分值</label>
+                  <input type="number" v-model="createForm.totalScore" class="form-control" min="0">
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group half">
+                  <label>发布时间</label>
+                  <input type="datetime-local" v-model="createForm.publishTime" class="form-control">
+                </div>
+                <div class="form-group half">
+                  <label>截止时间 <span class="text-red">*</span></label>
+                  <input type="datetime-local" v-model="createForm.deadline" class="form-control">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>作业说明/要求</label>
+                <textarea v-model="createForm.description" rows="4" class="form-control" placeholder="请输入作业详细要求..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>附件 (可选)</label>
+                <input type="file" @change="handleFileChange" class="form-control-file">
+                <small class="text-gray">支持 PPT, PDF, Word 等格式</small>
+              </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="closeCreateModal">取消</button>
+            <button class="btn btn-primary" @click="submitCreate">确认发布</button>
           </div>
       </div>
     </div>
@@ -145,8 +190,8 @@
 </template>
 
 <script>
-import { getHomeworkList, getHomeworkSubmissions, gradeHomework, downloadHomeworkFile, deleteHomework } from '@/api/homework'
-
+import { getHomeworkList, getHomeworkSubmissions, gradeHomework, downloadHomeworkFile, deleteHomework,publishHomework } from '@/api/homework'
+import { getTeacherCourses } from '@/api/teachingClass' // <--- 新增：用于获取班级列表
 export default {
   name: 'HomeworkManage',
   data() {
@@ -160,6 +205,19 @@ export default {
       showCreateModal: false,
       showGradingModal: false,
       showGradeForm: false,
+
+      // --- 新增：发布作业相关数据 ---
+      teachingClasses: [], // 班级选项列表
+      createForm: {
+        homeworkTitle: '',
+        classId: '',
+        totalScore: 100,
+        publishTime: '',
+        deadline: '',
+        description: '',
+        file: null // 附件
+      },
+      // ---------------------------
 
       // 当前操作数据
       currentHomework: {},
@@ -184,6 +242,7 @@ export default {
     const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
     this.teacherId = userInfo.teacherId || userInfo.username; // 根据实际存储字段调整
     this.fetchData();
+    this.loadClasses(); // <--- 新增：初始化时加载班级列表
   },
   methods: {
     fetchData() {
@@ -194,6 +253,77 @@ export default {
         }
       });
     },
+
+    // --- 新增：加载班级列表 ---
+    loadClasses() {
+      if (!this.teacherId) return;
+      getTeacherCourses(this.teacherId).then(res => {
+        if (res.success) {
+          this.teachingClasses = res.data;
+        }
+      });
+    },
+
+    // --- 新增：处理发布作业逻辑 ---
+    openCreateModal() { 
+      // 重置表单
+      this.createForm = {
+        homeworkTitle: '',
+        classId: '',
+        totalScore: 100,
+        publishTime: '',
+        deadline: '',
+        description: '',
+        file: null
+      };
+      // 设置默认发布时间为当前
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      this.createForm.publishTime = now.toISOString().slice(0,16);
+      
+      this.showCreateModal = true; 
+    },
+
+    handleFileChange(event) {
+      this.createForm.file = event.target.files[0];
+    },
+
+    submitCreate() {
+      // 1. 简单校验
+      if (!this.createForm.homeworkTitle || !this.createForm.classId || !this.createForm.deadline) {
+        alert('请填写完整信息（标题、班级、截止时间）');
+        return;
+      }
+
+      // 2. 构建 FormData
+      const formData = new FormData();
+      formData.append('homeworkTitle', this.createForm.homeworkTitle);
+      formData.append('classId', this.createForm.classId);
+      formData.append('totalScore', this.createForm.totalScore);
+      formData.append('description', this.createForm.description);
+      // 时间格式处理：HTML input 是 'T' 分隔，后端代码里有 replace 处理，直接传即可
+      formData.append('publishTime', this.createForm.publishTime); 
+      formData.append('deadline', this.createForm.deadline);
+      
+      if (this.createForm.file) {
+        formData.append('attachmentFile', this.createForm.file);
+      }
+
+      // 3. 调用 API
+      publishHomework(formData).then(res => {
+        if (res.success) {
+          alert('作业发布成功！');
+          this.showCreateModal = false;
+          this.fetchData(); // 刷新列表
+        } else {
+          alert('发布失败: ' + res.message);
+        }
+      });
+    },
+    // ---------------------------
+    
+    // ... (保留原有的 openGradingModal, loadSubmissions, closeGradingModal, openGradeForm, closeGradeForm, submitGrade, handleDownload, handleDelete, closeCreateModal 等方法) ...
+    closeCreateModal() { this.showCreateModal = false; },
     
     // --- 批改流程 ---
     openGradingModal(hw) {
@@ -256,8 +386,6 @@ export default {
         });
       }
     },
-    openCreateModal() { this.showCreateModal = true; },
-    closeCreateModal() { this.showCreateModal = false; },
     handleSearch() {}, // computed 自动处理
     
     // 工具函数
@@ -276,10 +404,10 @@ export default {
 
 <style scoped>
 /* 复用之前的 CSS 样式，并增加部分 */
-.manage-container { padding: 20px; background: #f5f7fa; min-height: 100vh; }
+.manage-container { padding: 20px; background: #f5f7fa; height: 100vh; }
 .action-header { display: flex; justify-content: space-between; margin-bottom: 20px; background: #fff; padding: 20px; border-radius: 8px; }
 .title-section h2 { margin: 0; color: #333; }
-.subtitle { color: #999; font-size: 13px; margin-top: 5px; }
+.subtitle { color: #999; font-size: 12px; margin-top: 1px; }
 .operation-section { display: flex; gap: 10px; }
 .search-box { display: flex; }
 .search-box input { padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px 0 0 4px; }
@@ -318,4 +446,18 @@ export default {
 .btn { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; }
 .btn-primary { background: #409eff; color: white; }
 .btn-secondary { background: #fff; border: 1px solid #dcdfe6; }
+
+/* 添加到 style scoped 底部 */
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #333; }
+.form-control { width: 100%; padding: 10px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box; }
+.form-control:focus { border-color: #409eff; outline: none; }
+.form-row { display: flex; gap: 15px; }
+.form-group.half { flex: 1; }
+.form-control-file { padding: 5px 0; }
+.text-red { color: #f56c6c; }
+.text-gray { color: #999; font-size: 12px; }
+.modal-footer { margin-top: auto; padding-top: 15px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+
+
 </style>
