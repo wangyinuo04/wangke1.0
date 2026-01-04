@@ -100,13 +100,45 @@
         </div>
         <div class="modal-body">
           <div class="resource-list">
-            <div v-if="currentResources.length === 0" class="empty-resource">
-              暂无上传的教学资源 (功能开发中...)
+            <div v-if="isLoadingResources" class="loading-state">
+              ⏳ 正在加载资源列表...
+            </div>
+
+            <div v-else-if="currentResources.length === 0" class="empty-resource">
+              暂无上传的教学资源
             </div>
             
             <div v-else class="resource-table-wrapper">
               <table class="data-table resource-table">
-                </table>
+                <thead>
+                  <tr>
+                    <th width="60">类型</th>
+                    <th>资源名称</th>
+                    <th>所属章节</th> <th width="100">大小</th>
+                    <th width="120">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="res in currentResources" :key="res.resourceId">
+                    <td class="type-icon">{{ getFileIcon(res.resourceType) }}</td>
+                    <td>
+                      <div class="res-title">{{ res.resourceName }}</div>
+                    </td>
+                    <td><span class="chapter-tag">{{ res.chapterName }}</span></td>
+                    <td class="mono">{{ res.formattedSize || res.fileSize }}</td>
+                    <td>
+                      <button 
+                        class="btn-text btn-download" 
+                        @click="handleDownload(res)"
+                        :disabled="!res.allowDownload"
+                        :title="res.allowDownload ? '点击下载' : '老师设置了禁止下载'"
+                      >
+                        {{ res.allowDownload ? '📥 下载' : '🚫 禁止' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -122,6 +154,8 @@
 <script>
 // 引入 API
 import { getMyCourses, joinClass } from '@/api/student'
+// 新增引入 resource 相关 API
+import { getChapterTree, getResourcesByChapter, downloadResource } from '@/api/resource'
 
 export default {
   name: 'CourseList',
@@ -138,8 +172,9 @@ export default {
 
       // 资源弹窗相关
       showResourceModal: false,
+      isLoadingResources: false, // 新增：资源加载状态
       currentCourse: {},
-      currentResources: [], // 暂时置空
+      currentResources: [], 
     }
   },
   computed: {
@@ -162,13 +197,9 @@ export default {
       this.isLoading = true;
       getMyCourses().then(res => {
         if (res.success) {
-          this.myCourses = res.data;
+          this.myCourses = res.data || [];
         } else {
-          // 如果没有登录或者报错，可以提示用户
           console.error(res.message);
-          if(res.message.includes("登录")) {
-             // 可以在这里跳转登录页
-          }
         }
       }).catch(err => {
         console.error("获取课程列表失败", err);
@@ -203,10 +234,10 @@ export default {
           this.closeJoinModal();
           this.fetchData(); // 重新加载列表
         } else {
-          this.errorMsg = res.message; // 显示后端返回的具体错误（如验证码无效、已加入）
+          this.errorMsg = res.message; 
         }
       }).catch(err => {
-        console.error("加入班级失败", err); // <--- 加上这一行，使用了 err 变量
+        console.error("加入班级失败", err);
         this.errorMsg = '网络错误，请稍后重试';
       });
     },
@@ -218,34 +249,111 @@ export default {
       }
     },
 
-    openResourceModal(course) {
+    // --- 资源相关核心逻辑 ---
+
+    async openResourceModal(course) {
       this.currentCourse = course;
-      // TODO: 这里将来要调用 getCourseResources(course.classId)
-      this.currentResources = []; 
+      this.currentResources = [];
       this.showResourceModal = true;
+      this.isLoadingResources = true;
+
+      try {
+        // 1. 获取该课程(班级)下的章节树
+        const treeRes = await getChapterTree(course.classId);
+        
+        if (treeRes.success && treeRes.data) {
+          // 2. 扁平化所有章节 ID (将树形结构转为一维数组)
+          const allChapters = this.flattenChapters(treeRes.data);
+          
+          if (allChapters.length > 0) {
+            // 3. 并发请求：获取所有章节下的资源
+            const promises = allChapters.map(chapter => 
+              getResourcesByChapter(chapter.id).then(res => ({
+                chapterName: chapter.name,
+                resources: res.success ? res.data : []
+              }))
+            );
+
+            const results = await Promise.all(promises);
+
+            // 4. 合并所有资源到一个列表
+            let aggregatedList = [];
+            results.forEach(item => {
+              if (item.resources && item.resources.length > 0) {
+                // 为每个资源打上章节名的标签，方便展示
+                const taggedResources = item.resources.map(r => ({
+                  ...r,
+                  chapterName: item.chapterName
+                }));
+                aggregatedList = aggregatedList.concat(taggedResources);
+              }
+            });
+            
+            this.currentResources = aggregatedList;
+          }
+        }
+      } catch (error) {
+        console.error("加载资源失败", error);
+        alert("资源列表加载失败，请检查网络");
+      } finally {
+        this.isLoadingResources = false;
+      }
     },
+
     closeResourceModal() {
       this.showResourceModal = false;
       this.currentResources = [];
     },
     
+    // 递归扁平化章节树
+    flattenChapters(tree) {
+      let result = [];
+      tree.forEach(node => {
+        result.push({ id: node.id, name: node.name });
+        if (node.children && node.children.length > 0) {
+          result = result.concat(this.flattenChapters(node.children));
+        }
+      });
+      return result;
+    },
+
+    // 处理下载
+    async handleDownload(res) {
+      if (!res.allowDownload) return;
+      
+      try {
+        const response = await downloadResource(res.resourceId);
+        // 处理二进制流下载
+        // 假设 axios 响应拦截器没有把 response 处理掉，如果处理了需要根据实际情况获取 blob
+        const blob = new Blob([response]); 
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        // 使用资源名称作为文件名
+        link.download = res.resourceName || 'download_file';
+        document.body.appendChild(link);
+        link.click();
+        
+        // 清理
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+      } catch (error) {
+        console.error("下载失败", error);
+        alert("下载失败，请稍后重试");
+      }
+    },
+
     // 工具方法
     getFileIcon(type) {
       const map = {
-        'PPT': '📊', 'PDF': '📄', 'Video': '🎬', 'Word': '📝', 'Code': '💻', 'Audio': '🎵'
+        'PPT': '📊', 'PDF': '📄', 'Video': '🎬', 'Word': '📝', 'Code': '💻', 'Audio': '🎵',
+        '视频': '🎬', '音频': '🎵'
       };
-      return map[type] || '📁';
-    },
-    previewResource(res) {
-      alert(`正在打开预览：${res.name}`);
-    },
-    downloadResource(res) {
-      if (res.allowDownload) {
-        alert(`开始下载文件：${res.name}`);
-        // window.open(res.filePath)
-      } else {
-        alert('该资源不允许下载');
-      }
+      // 模糊匹配
+      if (type && type.includes('PPT')) return '📊';
+      if (type && type.includes('Word')) return '📝';
+      if (type && type.includes('PDF')) return '📄';
+      return map[type] || '📎';
     }
   }
 }
@@ -324,4 +432,52 @@ export default {
 .empty-resource { text-align: center; color: #999; margin-top: 50px; }
 
 .modal-footer { padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+
+/* --- 新增样式 --- */
+.loading-state {
+  text-align: center;
+  padding: 40px;
+  color: #1890ff;
+  font-size: 14px;
+}
+
+.resource-table th {
+  background: #fafafa;
+}
+
+.type-icon {
+  font-size: 20px;
+  text-align: center;
+}
+
+.res-title {
+  font-weight: 500;
+  color: #333;
+}
+
+.chapter-tag {
+  background: #f0f2f5;
+  color: #909399;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.btn-download {
+  color: #1890ff;
+  font-weight: 500;
+}
+.btn-download:hover {
+  text-decoration: underline;
+}
+.btn-download:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.mono {
+  font-family: monospace;
+  color: #666;
+}
 </style>
